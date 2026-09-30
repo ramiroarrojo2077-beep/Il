@@ -34,6 +34,15 @@ tres tamaños y la app recomienda **el más potente que entra en la RAM** del te
 
 ### Memoria
 
+**Modo ahorro de RAM (activado de fábrica):** Rama Ultra abre desde **~1,7 GB libres**
+en vez de ~4,6 GB. Los pesos de Ultra (IQ3_M/IQ4_XS) el motor los usa directo desde el
+archivo mapeado, sin copiarlos; así que la app sólo reserva lo fijo (caché de la charla
++ cálculo, ~0,5 GB) y deja en RAM la parte de los pesos que entre (al menos el 20 %). El
+resto se lee del almacenamiento a medida que hace falta. Cuando entra entera, va a
+velocidad completa; cuando no, responde bastante más lento, y en ese caso Rama piensa
+hasta 256 tokens y escribe hasta 450 para no demorar. Se apaga en Ajustes.
+No aplica a Liviana/Completa (Q4_K_M), que el motor reempaqueta en RAM.
+
 - **Rama Ultra tiene dos variantes de memoria**, elegibles antes de bajarla:
   **Compacta** (IQ3_M, 3,9 GB, la predeterminada en teléfonos de menos de 16 GB) y
   **Equilibrada** (IQ4_XS, 4,6 GB). Q4_K_M ocuparía 5,0 GB. Si un repositorio no
@@ -98,7 +107,7 @@ compila `app/src` a un dex nuevo, reemplaza recursos, assets y manifiesto, y fir
 app/src/ar/rama/ai/          interfaz: MainActivity, pantallas, tema, íconos, Markdown
 app/src/ar/rama/ai/motor/    Asistente, MotorRama, Catalogo, NivelPensar, Buscador…
 app/res, app/assets          ícono adaptativo, tema, Nunito, base de conocimiento
-prueba/PruebasMotor.kt       70 pruebas del motor (JVM, con un modelo simulado)
+prueba/PruebasMotor.kt       81 pruebas del motor (JVM, con un modelo simulado)
 prueba/robolectric/          prueba de la interfaz sobre el APK compilado
 ```
 

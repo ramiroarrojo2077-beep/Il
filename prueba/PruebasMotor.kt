@@ -289,6 +289,39 @@ fun main() {
         verificar("Descarga: ignora las UD-", D.elegirArchivo(listOf("Qwen3-8B-UD-IQ3_M.gguf", "Qwen3-8B-Q3_K_M.gguf"), compacta) == "Qwen3-8B-Q3_K_M.gguf")
     }
 
+    // --- Modo ahorro de RAM
+    run {
+        val C = ar.rama.ai.motor.Catalogo
+        val P = ar.rama.ai.motor.PlanDeMemoria
+        val u = C.ULTRA
+        val sinAhorro = P.calcular(u.bytesAproximados, u.elementosKvPorToken, 6144, 2_000_000_000L, permitirAhorro = false)
+        verificar("Ahorro: sin él, con 2 GB libres Ultra no abre", !sinAhorro.alcanza) { sinAhorro.toString() }
+        val conAhorro = P.calcular(u.bytesAproximados, u.elementosKvPorToken, 6144, 2_000_000_000L, permitirAhorro = true)
+        verificar("Ahorro: con él, con 2 GB libres Ultra abre", conAhorro.alcanza && conAhorro.enAhorro && conAhorro.contexto == 2048) { conAhorro.toString() }
+        verificar("Ahorro: lo fijo es menos de 0,6 GB", conAhorro.fijo < 600_000_000L) { conAhorro.fijo.toString() }
+        verificar("Ahorro: usa lo libre sin pasarse", conAhorro.enUso + P.MARGEN <= 2_000_000_000L + 1) { conAhorro.toString() }
+        val minimo = P.minimoParaAbrir(u.bytesAproximados, u.elementosKvPorToken, true)
+        verificar("Ahorro: Ultra abre desde menos de 1,8 GB libres", minimo < 1_800_000_000L) { minimo.toString() }
+        verificar("Ahorro: sin ahorro pide más de 4,5 GB", P.minimoParaAbrir(u.bytesAproximados, u.elementosKvPorToken, false) > 4_500_000_000L)
+        val poco = P.calcular(u.bytesAproximados, u.elementosKvPorToken, 6144, 1_200_000_000L, permitirAhorro = true)
+        verificar("Ahorro: con 1,2 GB libres no abre", !poco.alcanza) { poco.toString() }
+        val holgado = P.calcular(u.bytesAproximados, u.elementosKvPorToken, 6144, 7_000_000_000L, permitirAhorro = true)
+        verificar("Ahorro: si entra entera no se activa", holgado.alcanza && !holgado.enAhorro && holgado.contexto == 6144) { holgado.toString() }
+        val iq3 = ar.rama.ai.motor.InfoGguf("qwen3", "", 36, 32, 8, 4096, 128, 128, 40960, 27)
+        val q4km = iq3.copy(tipoArchivo = 15)
+        val f = java.io.File("x.gguf")
+        verificar("Ahorro: IQ3_M se lee del archivo", ar.rama.ai.motor.MotorRama.seLeeDelArchivo(iq3, f))
+        verificar("Ahorro: Q4_K_M no (el motor la reempaqueta)", !ar.rama.ai.motor.MotorRama.seLeeDelArchivo(q4km, f))
+    }
+    run {
+        val falso = ModeloFalso(listOf(List(400) { "pienso " }, listOf("Respuesta."))).also { it.enAhorro = true }
+        val asistente = sinRama().also { it.motor = falso }
+        val r = asistente.responder("contame algo", emptyList(), null, AjustesRama(NivelPensar.MAX, Estilos.CHARLA, false), OyenteDePrueba())
+        verificar("Ahorro: Max piensa como mucho 256 tokens", r.tokensPensados == Asistente.PRESUPUESTO_AHORRO && falso.maxTokens[1] <= Asistente.MAX_RESPUESTA_AHORRO) {
+            "pensados=${r.tokensPensados} max=${falso.maxTokens}"
+        }
+    }
+
     println()
     println("$pruebas pruebas, $fallas fallas")
     if (fallas > 0) System.exit(1)
@@ -338,6 +371,7 @@ private class ModeloFalso(
     override val nombre = "Falso"
     override val info = "modelo de prueba"
     override val esChatML = true
+    override var enAhorro = false
     override fun formatearNativo(mensajes: List<Mensaje>) = ""
     override fun cancelar() {}
     override fun generar(prompt: String, maxTokens: Int, temperatura: Float, topP: Float, topK: Int, alFragmento: (String) -> Boolean): Int {

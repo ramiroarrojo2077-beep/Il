@@ -22,6 +22,8 @@ class MotorRama private constructor(
     val gguf: InfoGguf?,
 ) : ModeloDeLenguaje {
     override val contexto: Int get() = plan.contexto
+
+    override val enAhorro: Boolean get() = plan.enAhorro
     @Volatile private var cerrado = false
     @Volatile private var generandoAhora = false
 
@@ -108,11 +110,24 @@ class MotorRama private constructor(
          * ([libre], en bytes), sin pasar el tope que corresponde a la RAM total
          * del teléfono. La caché se calcula con la arquitectura real del archivo.
          */
-        fun planear(archivo: File, gguf: InfoGguf?, ramGb: Int, libre: Long): PlanDeMemoria {
+        fun planear(archivo: File, gguf: InfoGguf?, ramGb: Int, libre: Long, permitirAhorro: Boolean = false): PlanDeMemoria {
             val kv = gguf?.elementosKvPorToken ?: Catalogo.deArchivo(archivo.name)?.elementosKvPorToken ?: 0L
             var tope = topeDeContexto(archivo, ramGb)
             if (gguf != null && gguf.contextoEntrenado in 1 until tope) tope = gguf.contextoEntrenado
-            return PlanDeMemoria.calcular(archivo.length(), kv, tope, libre)
+            val ahorro = permitirAhorro && seLeeDelArchivo(gguf, archivo)
+            return PlanDeMemoria.calcular(archivo.length(), kv, tope, libre, ahorro)
+        }
+
+        /**
+         * true si los pesos se usan directo desde el archivo mapeado. El motor
+         * reempaqueta en RAM algunas cuantizaciones (Q4_0, Q4_K, IQ4_NL, Q8_0)
+         * para acelerarlas en ARM: esas sí ocupan su tamaño completo y no pueden
+         * ir en modo ahorro. Las IQ2/IQ3/IQ4_XS, Q2_K, Q3_K, Q5_K y Q6_K no.
+         */
+        fun seLeeDelArchivo(gguf: InfoGguf?, archivo: File): Boolean {
+            val tipo = gguf?.cuantizacion ?: Catalogo.deArchivo(archivo.name)?.cuantizacion ?: return false
+            return tipo.startsWith("IQ2") || tipo.startsWith("IQ3") || tipo == "IQ4_XS" || tipo.startsWith("IQ1") ||
+                tipo == "Q2_K" || tipo == "Q2_K_S" || tipo.startsWith("Q3_K") || tipo.startsWith("Q5_K") || tipo == "Q6_K"
         }
 
         /**

@@ -234,6 +234,7 @@ public class PruebaInterfaz {
         @Override public String getInfo() { return "modelo simulado para la prueba"; }
         @Override public int getContexto() { return 8192; }
         @Override public boolean getEsChatML() { return true; }
+        @Override public boolean getEnAhorro() { return false; }
         @Override public String formatearNativo(List<ar.rama.ai.motor.Mensaje> mensajes) { return ""; }
         @Override public void cancelar() {}
 

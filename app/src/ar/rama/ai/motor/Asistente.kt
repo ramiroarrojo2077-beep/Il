@@ -190,11 +190,19 @@ class Asistente(val rama: Rama, private val buscador: Buscador = Buscador()) {
 
         // 7. El modelo escribe.
         val maxRespuesta = (ajustes.estilo.maxTokens * nivel.factorRespuesta).toInt().coerceAtMost(m.contexto / 3)
+            .let { if (m.enAhorro) minOf(it, MAX_RESPUESTA_AHORRO) else it }
         val sistema = Identidad.sistema(ajustes.estilo)
         val contexto = armarContexto(dato, local, if (usaAdjunto) adjunto else null, fuentesUnicas, paginas)
         val pedido = Identidad.pedidoDelNivel(nivel).takeIf { m.esChatML && nivel.piensa } ?: ""
         val sinFuentes = contexto.isEmpty() && esFactual(plano)
-        val armado = ajustarAlContexto(m, sistema, historial, contexto, pregunta, pedido, sinFuentes, maxRespuesta, nivel)
+        var armado = ajustarAlContexto(m, sistema, historial, contexto, pregunta, pedido, sinFuentes, maxRespuesta, nivel)
+        if (m.enAhorro && armado.presupuesto > PRESUPUESTO_AHORRO) {
+            armado = Armado(armado.prompt, PRESUPUESTO_AHORRO)
+            paso(
+                TipoPaso.PRESUPUESTO, "Ahorro de RAM",
+                "el modelo está leyendo parte de sus pesos del almacenamiento, así que pienso hasta $PRESUPUESTO_AHORRO tokens para no tardar demasiado",
+            )
+        }
         paso(
             TipoPaso.MOTOR, "Escribiendo",
             "${m.nombre} · nivel ${nivel.nombre}" +
@@ -482,6 +490,9 @@ class Asistente(val rama: Rama, private val buscador: Buscador = Buscador()) {
 
     companion object {
         const val MAX_HISTORIAL = 8
+        /** En modo ahorro de RAM cada token tarda más: se piensa y se escribe menos. */
+        const val PRESUPUESTO_AHORRO = 256
+        const val MAX_RESPUESTA_AHORRO = 450
         const val CARACTERES_POR_TOKEN = 3.2
 
         fun tokens(texto: String): Int = (texto.length / CARACTERES_POR_TOKEN).toInt() + 8

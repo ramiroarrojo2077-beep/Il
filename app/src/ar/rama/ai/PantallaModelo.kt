@@ -36,6 +36,7 @@ class PantallaModelo(
     private val descargas: DescargaEnSegundoPlano,
     private val modeloActivo: () -> File?,
     private val planActivo: () -> ar.rama.ai.motor.PlanDeMemoria?,
+    private val ahorroRam: () -> Boolean,
     private val cargando: () -> Boolean,
     private val alUsar: (File) -> Unit,
     private val alQuitar: () -> Unit,
@@ -81,7 +82,7 @@ class PantallaModelo(
             else -> s.javaClass.simpleName
         }
         e.id + estado + (e.id in resolviendo) + errores[e.id] + descargas.variante(e, ramDelTelefono)?.id
-    } + modeloActivo()?.absolutePath + cargando()
+    } + modeloActivo()?.absolutePath + cargando() + ahorroRam()
 
     init {
         // Si quedó una descarga andando de antes, la seguimos aunque la pantalla esté cerrada.
@@ -267,6 +268,7 @@ class PantallaModelo(
             val plan = planActivo()
             val texto = when {
                 cargando() -> "Cargando…"
+                plan != null && plan.enAhorro -> "En uso · ahorro de RAM · ${plan.enUsoLegible}"
                 plan != null -> "En uso · ${plan.contexto} tokens · ${plan.totalLegible}"
                 else -> "En uso"
             }
@@ -282,6 +284,7 @@ class PantallaModelo(
             text = edicion.descripcion
             estilo(13.5f, Colores.TEXTO_2, Peso.NORMAL, 1.4f)
         }, lp(MATCH, WRAP) { topMargin = dp(10f) })
+        if (edicion.id == Catalogo.ULTRA.id) caja.addView(requisitoDeMemoria(edicion), lp(MATCH, WRAP) { topMargin = dp(10f) })
 
         val acciones = LinearLayout(actividad).apply { orientation = LinearLayout.VERTICAL }
         when {
@@ -381,6 +384,28 @@ class PantallaModelo(
             estilo(12.5f, Colores.TEXTO_2, Peso.NORMAL, 1.3f)
         }, lp(MATCH, WRAP) { topMargin = dp(8f) })
         return caja
+    }
+
+    /** Cuánta memoria libre pide para abrir: normal y en modo ahorro. */
+    private fun requisitoDeMemoria(edicion: Edicion): View {
+        val P = ar.rama.ai.motor.PlanDeMemoria
+        val completo = P.minimoParaAbrir(edicion.bytesAproximados, edicion.elementosKvPorToken, false)
+        val ahorro = P.minimoParaAbrir(edicion.bytesAproximados, edicion.elementosKvPorToken, true)
+        val activo = ahorroRam()
+        return LinearLayout(actividad).apply {
+            orientation = LinearLayout.VERTICAL
+            background = redondeado(Colores.alfa(Colores.AMARILLO, if (activo) 0.10f else 0.05f), dp(14f).toFloat(), Colores.alfa(Colores.AMARILLO, 0.4f), dp(1f))
+            setPadding(dp(12f), dp(10f), dp(12f), dp(10f))
+            addView(TextView(actividad).apply {
+                text = if (activo) "Pide desde ${P.legible(ahorro)} libres" else "Pide ${P.legible(completo)} libres"
+                estilo(13.5f, Colores.AMARILLO, Peso.EXTRA, 1.1f)
+            })
+            addView(TextView(actividad).apply {
+                text = if (activo) "Con Ahorro de RAM: si no entra entera, lee del almacenamiento lo que falta (más lenta). Con ${P.legible(completo)} libres va a velocidad completa."
+                else "Activá Ahorro de RAM en Ajustes para abrirla desde ${P.legible(ahorro)} libres (más lenta)."
+                estilo(12f, Colores.TEXTO_2, Peso.NORMAL, 1.3f)
+            }, lp(MATCH, WRAP) { topMargin = dp(3f) })
+        }
     }
 
     private val cuantizaciones = HashMap<String, String?>()

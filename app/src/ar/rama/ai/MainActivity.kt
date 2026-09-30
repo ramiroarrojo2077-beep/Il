@@ -73,6 +73,8 @@ class MainActivity : Activity() {
     private var estilo: Estilo = Estilos.PREDETERMINADO
     private var buscarWeb = true
     private var mostrarRazonamiento = true
+    /** Abrir modelos grandes aunque sus pesos no entren enteros en RAM (más lento). */
+    private var ahorroRam = true
 
     private lateinit var conversaciones: Conversaciones
     private lateinit var descargas: DescargaEnSegundoPlano
@@ -120,6 +122,7 @@ class MainActivity : Activity() {
         estilo = Estilos.porId(prefs.getString("estilo", null))
         buscarWeb = prefs.getBoolean("web", true)
         mostrarRazonamiento = prefs.getBoolean("razonamiento", true)
+        ahorroRam = prefs.getBoolean("ahorro-ram", true)
         conversaciones = Conversaciones(File(filesDir, "chats"))
         descargas = DescargaEnSegundoPlano(this)
         chatActual = prefs.getString("chat", null) ?: Conversaciones.nuevoId()
@@ -141,6 +144,7 @@ class MainActivity : Activity() {
             this, raiz, descargas,
             modeloActivo = { motor?.archivo },
             planActivo = { motor?.plan },
+            ahorroRam = { ahorroRam },
             cargando = { cargandoModelo },
             alUsar = { cargarModelo(it) },
             alQuitar = { quitarModelo(borrarPreferencia = true) },
@@ -459,6 +463,7 @@ class MainActivity : Activity() {
         val m = motor
         val (texto, color) = when {
             cargandoModelo -> "cargando el modelo…" to Colores.LILA
+            m != null && m.plan.enAhorro -> "${m.nombre} · ahorro de RAM (${m.plan.enUsoLegible})" to Colores.AMARILLO
             m != null -> "${m.nombre} · lista · ${m.plan.totalLegible} de RAM" to Colores.MENTA
             modeloEnPausa -> "modelo en pausa (se recarga solo)" to Colores.LILA
             !Llama.disponible -> "sin motor en este teléfono" to Colores.ERROR
@@ -547,6 +552,15 @@ class MainActivity : Activity() {
             buscarWeb = it
             preferencias().edit().putBoolean("web", it).apply()
             pintarBotonWeb()
+        })
+        contenido.addView(filaInterruptor(
+            "Ahorro de RAM",
+            "Deja abrir Rama Ultra con poca memoria libre: lee del almacenamiento la parte de los pesos que no entra. Responde más lento, pero no hace falta tener 5 GB libres.",
+            ahorroRam, Colores.AMARILLO,
+        ) {
+            ahorroRam = it
+            preferencias().edit().putBoolean("ahorro-ram", it).apply()
+            if (pantallaModelo.visible) pantallaModelo.refrescar()
         })
         contenido.addView(filaInterruptor("Mostrar el razonamiento", "Ver en vivo cómo piensa, qué busca y qué lee antes de responder.", mostrarRazonamiento, Colores.LILA) {
             mostrarRazonamiento = it
@@ -950,7 +964,7 @@ class MainActivity : Activity() {
             val gguf = Gguf.leer(archivo)
             // La memoria del modelo que está abierto se libera al cerrarlo.
             val libre = memoriaLibre() + (anterior?.plan?.total ?: 0L)
-            val plan = MotorRama.planear(archivo, gguf, ramTotalGb(), libre)
+            val plan = MotorRama.planear(archivo, gguf, ramTotalGb(), libre, ahorroRam)
             if (!plan.alcanza) {
                 principal.post {
                     cargandoModelo = false
@@ -976,7 +990,17 @@ class MainActivity : Activity() {
                     burbujaRama("No pude cargar «${archivo.name}». Puede que el archivo esté incompleto, que no sea un GGUF o que al teléfono le falte memoria para esta edición.")
                 } else {
                     preferencias().edit().putString("modelo", archivo.absolutePath).apply()
-                    if (!silencioso) avisar("${abierto.nombre} lista · ${plan.contexto} tokens de contexto · usa ~${plan.totalLegible} de RAM")
+                    if (plan.enAhorro) {
+                        burbujaRama(
+                            "Abrí **${abierto.nombre}** en **modo ahorro de RAM**: reservo ${PlanDeMemoria.legible(plan.fijo)} fijos y de los " +
+                                "${PlanDeMemoria.legible(plan.bytesPesos)} de pesos dejo en memoria unos ${PlanDeMemoria.legible(plan.pesosResidentes)}; " +
+                                "el resto lo leo del almacenamiento a medida que hace falta.\n\n" +
+                                "Así entra en tu teléfono, pero cada palabra tarda bastante más y pienso menos para no demorar. " +
+                                "Si cerrás otras aplicaciones y la volvés a abrir desde **Modelo**, va más rápido.",
+                        )
+                    } else if (!silencioso) {
+                        avisar("${abierto.nombre} lista · ${plan.contexto} tokens de contexto · usa ~${plan.totalLegible} de RAM")
+                    }
                 }
                 pintarEstadoModelo()
                 if (pantallaModelo.visible) pantallaModelo.refrescar()
@@ -991,13 +1015,17 @@ class MainActivity : Activity() {
         val variante = edicion?.variantes?.filter { it.bytesAproximados < plan.bytesPesos - 200_000_000L }?.minByOrNull { it.bytesAproximados }
         val menor = Catalogo.EDICIONES.map { descargas.efectiva(it, ram) }
             .lastOrNull { it.memoriaTipica.total < plan.total && it.id != edicion?.id }
+        val puedeAhorrar = MotorRama.seLeeDelArchivo(Gguf.leer(archivo), archivo)
+        val minimoAhorro = PlanDeMemoria.minimoParaAbrir(plan.bytesPesos, (edicion?.elementosKvPorToken ?: 0L), true)
         val sugerencia = when {
+            puedeAhorrar && !ahorroRam -> ", o activá **Ahorro de RAM** en Ajustes: con eso abre desde unos ${PlanDeMemoria.legible(minimoAhorro)} libres (más lenta)."
             variante != null -> ", o borrala y bajá la variante **${variante.nombre}** (${variante.cuantizacion}), que ocupa unos " +
                 PlanDeMemoria.estimar(variante.bytesAproximados, edicion?.elementosKvPorToken ?: 0L, 4096).totalLegible + "."
             menor != null -> ", o usá **${menor.nombre}**, que ocupa unos ${menor.memoriaTipica.totalLegible}."
             else -> "."
         }
-        return "No me alcanza la memoria para abrir **${edicion?.nombre ?: archivo.name}**: necesita unos ${plan.totalLegible} " +
+        val necesita = if (puedeAhorrar && ahorroRam) "aun en modo ahorro necesita unos ${PlanDeMemoria.legible(minimoAhorro)}" else "necesita unos ${plan.totalLegible}"
+        return "No me alcanza la memoria para abrir **${edicion?.nombre ?: archivo.name}**: $necesita " +
             "(pesos ${PlanDeMemoria.legible(plan.bytesPesos)}, memoria de la charla ${PlanDeMemoria.legible(plan.bytesCache)} y cálculo ${PlanDeMemoria.legible(plan.bytesComputo)}) " +
             "y ahora hay ${PlanDeMemoria.legible(plan.libre)} libres.\n\n" +
             "Cerrá otras aplicaciones (sobre todo juegos, cámara y navegador) y probá de nuevo" + sugerencia
@@ -1028,7 +1056,7 @@ class MainActivity : Activity() {
         pintarEstadoModelo()
         trabajador.execute {
             val gguf = Gguf.leer(guardado)
-            val plan = MotorRama.planear(guardado, gguf, ramTotalGb(), memoriaLibre())
+            val plan = MotorRama.planear(guardado, gguf, ramTotalGb(), memoriaLibre(), ahorroRam)
             val abierto = if (!plan.alcanza) null else try {
                 MotorRama.abrir(guardado, plan, gguf)
             } catch (e: Throwable) {

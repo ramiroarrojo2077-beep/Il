@@ -9,6 +9,12 @@ interface ModeloDeLenguaje {
     /** Habla ChatML (Qwen): sabe razonar dentro de <think> y apagarlo. */
     val esChatML: Boolean
 
+    /**
+     * Abierto en modo ahorro de RAM (parte de los pesos se lee del almacenamiento):
+     * cada token cuesta más, así que conviene pensar y escribir menos.
+     */
+    val enAhorro: Boolean
+
     /** Prompt armado con la plantilla propia del modelo. */
     fun formatearNativo(mensajes: List<Mensaje>): String
 
