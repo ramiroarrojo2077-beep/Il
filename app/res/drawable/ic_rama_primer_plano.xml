@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Tronco y ramas -->
+    <path android:pathData="M54,80 C54,70 54,60 54,46"
+        android:strokeColor="#FFFFFFFF" android:strokeWidth="6"
+        android:strokeLineCap="round" android:strokeLineJoin="round"/>
+    <path android:pathData="M54,67 C49,63 44,59 40,53"
+        android:strokeColor="#FFFFFFFF" android:strokeWidth="4.6"
+        android:strokeLineCap="round" android:strokeLineJoin="round"/>
+    <path android:pathData="M54,58 C59,54 63,50 67,45"
+        android:strokeColor="#FFFFFFFF" android:strokeWidth="4.6"
+        android:strokeLineCap="round" android:strokeLineJoin="round"/>
+    <!-- Hojas -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M40.5,53.5 Q29.5,52 28.5,39.5 Q40,41.5 40.5,53.5 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M66.5,45.5 Q67.5,33.5 80,32.5 Q78.5,44.5 66.5,45.5 Z"/>
+    <!-- Destello: la chispa de la IA en la punta de la rama -->
+    <path android:fillColor="#FFFFF3C4"
+        android:pathData="M54,23 C55.2,30.8 57.2,32.8 65,34 C57.2,35.2 55.2,37.2 54,45 C52.8,37.2 50.8,35.2 43,34 C50.8,32.8 52.8,30.8 54,23 Z"/>
+</vector>

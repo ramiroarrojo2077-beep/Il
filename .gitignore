@@ -1,0 +1,6 @@
+# Herramientas que baja compilar.sh y todo lo que genera
+.herramientas
+build/
+prueba/robolectric/build/
+prueba/robolectric/.gradle/
+prueba/robolectric/src/test/resources/com/

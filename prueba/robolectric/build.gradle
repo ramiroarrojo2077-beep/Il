@@ -1,0 +1,62 @@
+// Prueba de humo de la interfaz con Robolectric, contra el APK ya compilado.
+// La corre prueba/interfaz.sh después de ./compilar.sh.
+plugins { id 'java' }
+
+repositories {
+    // Espejo de Maven Central (el principal limita pedidos seguidos).
+    maven { url 'https://maven-central.storage-download.googleapis.com/maven2/' }
+    mavenCentral()
+}
+
+def raiz = file('../..')
+def herramientas = System.getenv('HERRAMIENTAS') ?: "${raiz}/.herramientas"
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+    // androidx.test (monitor e idling-resource) vive en Google Maven; si no se puede
+    // llegar, prueba/interfaz.sh lo arma desde el código fuente de android-test.
+    testImplementation('org.robolectric:robolectric:4.14.1') {
+        exclude group: 'androidx.test'
+        exclude group: 'androidx.test.espresso'
+        exclude group: 'androidx.annotation'
+        exclude group: 'androidx.concurrent'
+        exclude group: 'androidx.tracing'
+        exclude group: 'androidx.lifecycle'
+    }
+    testImplementation files("${buildDir}/androidx-test.jar")
+    // android.jar al final: dentro del sandbox corre el Android de Robolectric.
+    testImplementation files("${herramientas}/android.jar")
+    testImplementation files("${raiz}/build/clases", "${raiz}/build/motor-base.jar", "${herramientas}/kotlinc/lib/kotlin-stdlib.jar")
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(21) }
+}
+
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
+
+test {
+    testLogging { events 'passed', 'failed'; exceptionFormat 'full'; showStandardStreams true }
+    systemProperty 'robolectric.dependency.repo.url', 'https://maven-central.storage-download.googleapis.com/maven2'
+    systemProperty 'robolectric.graphicsMode', 'NATIVE'
+    systemProperty 'rama.capturas', "${raiz}/build/capturas"
+    maxHeapSize = '3g'
+    // Las clases del motor salen de dex2jar sin stackmap frames: sin verificador.
+    jvmArgs '-Dfile.encoding=UTF-8', '-XX:+UnlockDiagnosticVMOptions', '-XX:-BytecodeVerificationRemote', '-XX:-BytecodeVerificationLocal'
+}
+
+configurations { soloBajar }
+dependencies {
+    soloBajar('org.robolectric:robolectric:4.14.1') {
+        exclude group: 'androidx.test'
+        exclude group: 'androidx.test.espresso'
+        exclude group: 'androidx.annotation'
+        exclude group: 'androidx.concurrent'
+        exclude group: 'androidx.tracing'
+        exclude group: 'androidx.lifecycle'
+    }
+}
+tasks.register('copiarDependencias', Copy) {
+    from configurations.soloBajar
+    into "${buildDir}/libs-r"
+}

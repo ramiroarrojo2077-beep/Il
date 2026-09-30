@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="fondo">#FF0D0A1C</color>
+    <color name="superficie">#FF1A1437</color>
+    <color name="acento">#FFEC4899</color>
+    <color name="violeta">#FF8B5CF6</color>
+    <color name="seleccion">#668B5CF6</color>
+</resources>

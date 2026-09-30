@@ -1,0 +1,31 @@
+# Clases de la versión 3.2 que se sacan del dex original porque esta versión
+# las reemplaza (interfaz, catálogo de modelos, asistente, búsqueda, descargas).
+# Una ruta por línea, relativa a la raíz de clases; admite comodines de shell.
+ar/rama/ai/MainActivity*
+ar/rama/ai/PantallaChats*
+ar/rama/ai/PantallaModelos*
+ar/rama/ai/UiKt*
+ar/rama/ai/Paleta*
+ar/rama/ai/Tipo*
+ar/rama/ai/Espacio*
+ar/rama/ai/Radio*
+ar/rama/ai/Icono*
+ar/rama/ai/PuntosPensando*
+ar/rama/ai/Hoja*
+ar/rama/ai/EstadoDescarga*
+ar/rama/ai/DescargaEnSegundoPlano*
+ar/rama/ai/R.*
+ar/rama/ai/R$*
+ar/rama/ai/motor/Asistente*
+ar/rama/ai/motor/Catalogo*
+ar/rama/ai/motor/ModeloDisponible*
+ar/rama/ai/motor/Modo*
+ar/rama/ai/motor/Buscador*
+ar/rama/ai/motor/Descargador*
+ar/rama/ai/motor/Generador*
+ar/rama/ai/motor/ResultadoDescarga*
+ar/rama/ai/motor/Progreso*
+ar/rama/ai/motor/Origen*
+ar/rama/ai/motor/RespuestaAsistente*
+ar/rama/ai/motor/PasoAsistente*
+ar/rama/ai/motor/FiltroPensamiento*
