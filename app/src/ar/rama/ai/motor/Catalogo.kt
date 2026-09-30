@@ -17,7 +17,14 @@ data class Edicion(
     val ramRecomendadaGb: Int,
     val descripcion: String,
     val fuentes: List<Fuente>,
+    /** Cuantización preferida, para elegir entre los archivos de un repositorio. */
+    val cuantizacion: String,
+    /** capas × cabezas KV × (dim. clave + dim. valor): lo que ocupa cada token de contexto. */
+    val elementosKvPorToken: Long,
 ) {
+    /** Lo que ocupa en RAM con un contexto típico de 4096 tokens. */
+    val memoriaTipica: PlanDeMemoria get() = PlanDeMemoria.estimar(bytesAproximados, elementosKvPorToken, 4096)
+
     val archivoLocal: String get() = "$id.gguf"
 }
 
@@ -40,6 +47,8 @@ object Catalogo {
         ramRecomendadaGb = 4,
         descripcion = "Rápida y liviana: anda bien en casi cualquier teléfono y razona sorprendentemente bien para su tamaño.",
         fuentes = qwen3("1.7B", primeroOficial = false),
+        cuantizacion = "Q4_K_M",
+        elementosKvPorToken = 28L * 8 * (128 + 128),
     )
 
     val COMPLETA = Edicion(
@@ -50,16 +59,33 @@ object Catalogo {
         ramRecomendadaGb = 6,
         descripcion = "Más conocimiento y mucho mejor razonamiento: se equivoca bastante menos. Pide un teléfono con 6 GB de RAM o más.",
         fuentes = qwen3("4B", primeroOficial = true),
+        cuantizacion = "Q4_K_M",
+        elementosKvPorToken = 36L * 8 * (128 + 128),
     )
 
+    /**
+     * La edición grande viene cuantizada en IQ4_XS: 4,6 GB en vez de los 5,0 GB
+     * de Q4_K_M, con una pérdida de calidad mínima. Los pesos se leen del
+     * archivo mapeado en memoria, así que son páginas que Android puede soltar y
+     * volver a leer si le hace falta.
+     */
     val ULTRA = Edicion(
         id = "rama-ultra",
         nombre = "Rama Ultra",
         parametros = "8 B",
-        bytesAproximados = 5_027_783_488L,
-        ramRecomendadaGb = 11,
-        descripcion = "La más potente que puede correr un teléfono: el doble de parámetros que la Completa, más conocimiento y el mejor razonamiento. Pide 12 GB de RAM y es más lenta.",
-        fuentes = qwen3("8B", primeroOficial = true),
+        bytesAproximados = 4_560_000_000L,
+        ramRecomendadaGb = 12,
+        descripcion = "La más potente que puede correr un teléfono: el doble de parámetros que la Completa, más conocimiento y el mejor razonamiento. " +
+            "Optimizada para la RAM: pesos IQ4_XS y un contexto que se ajusta a la memoria libre. Pide 12 GB de RAM y es más lenta.",
+        fuentes = listOf(
+            Fuente("unsloth/Qwen3-8B-GGUF", "Qwen3-8B-IQ4_XS.gguf"),
+            Fuente("bartowski/Qwen_Qwen3-8B-GGUF", "Qwen_Qwen3-8B-IQ4_XS.gguf"),
+            // Respaldo oficial si no aparece ninguna IQ4_XS: más pesado, misma calidad o mejor.
+            Fuente("Qwen/Qwen3-8B-GGUF", "Qwen3-8B-Q4_K_M.gguf"),
+            Fuente("ggml-org/Qwen3-8B-GGUF", "Qwen3-8B-Q4_K_M.gguf"),
+        ),
+        cuantizacion = "IQ4_XS",
+        elementosKvPorToken = 36L * 8 * (128 + 128),
     )
 
     val EDICIONES = listOf(LIVIANA, COMPLETA, ULTRA)

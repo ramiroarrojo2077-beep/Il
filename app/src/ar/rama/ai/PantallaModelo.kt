@@ -33,6 +33,7 @@ class PantallaModelo(
     private val raiz: FrameLayout,
     private val descargas: DescargaEnSegundoPlano,
     private val modeloActivo: () -> File?,
+    private val planActivo: () -> ar.rama.ai.motor.PlanDeMemoria?,
     private val cargando: () -> Boolean,
     private val alUsar: (File) -> Unit,
     private val alQuitar: () -> Unit,
@@ -254,15 +255,23 @@ class PantallaModelo(
             estilo(17f, Colores.TEXTO, Peso.EXTRA, 1f)
         })
         textos.addView(TextView(actividad).apply {
-            text = "${edicion.parametros} parámetros · ${peso(edicion.bytesAproximados)} · desde ${edicion.ramRecomendadaGb} GB de RAM"
+            text = "${edicion.parametros} parámetros · descarga ${peso(edicion.bytesAproximados)} · usa ~${edicion.memoriaTipica.totalLegible} de RAM"
             estilo(12f, Colores.TEXTO_3, Peso.MEDIO, 1.2f)
         }, lp(WRAP, WRAP) { topMargin = dp(3f) })
         fila.addView(textos, lp(0, WRAP, 1f))
         caja.addView(fila)
         val sellos = LinearLayout(actividad).apply { orientation = LinearLayout.HORIZONTAL }
-        if (activo) sellos.addView(actividad.pastilla(if (cargando()) "Cargando…" else "En uso", Colores.MENTA, Trazos.visto()), lp(WRAP, WRAP) { rightMargin = dp(6f) })
+        if (activo) {
+            val plan = planActivo()
+            val texto = when {
+                cargando() -> "Cargando…"
+                plan != null -> "En uso · ${plan.contexto} tokens · ${plan.totalLegible}"
+                else -> "En uso"
+            }
+            sellos.addView(actividad.pastilla(texto, Colores.MENTA, Trazos.visto()), lp(WRAP, WRAP) { rightMargin = dp(6f) })
+        }
         if (recomendada) sellos.addView(actividad.pastilla("Recomendada para vos", Colores.AMARILLO, Trazos.destello(), true), lp(WRAP, WRAP) { rightMargin = dp(6f) })
-        if (edicion == Catalogo.ULTRA) sellos.addView(actividad.pastilla("La más potente", Colores.FUEGO, Trazos.fuego(), true), lp(WRAP, WRAP) { rightMargin = dp(6f) })
+        if (edicion == Catalogo.ULTRA && !activo) sellos.addView(actividad.pastilla("La más potente", Colores.FUEGO, Trazos.fuego(), true), lp(WRAP, WRAP) { rightMargin = dp(6f) })
         if (sellos.childCount > 0) caja.addView(sellos, lp(MATCH, WRAP) { topMargin = dp(12f) })
         caja.addView(TextView(actividad).apply {
             text = edicion.descripcion

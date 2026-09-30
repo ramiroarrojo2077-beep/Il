@@ -232,9 +232,78 @@ fun main() {
     verificar("RAM desconocida → Liviana", ar.rama.ai.motor.Catalogo.recomendada(0) == ar.rama.ai.motor.Catalogo.LIVIANA)
     verificar("Archivos distintos por edición", ar.rama.ai.motor.Catalogo.EDICIONES.map { it.archivoLocal }.toSet().size == 3)
 
+    // --- Memoria de Rama Ultra
+    run {
+        val gguf = java.io.File.createTempFile("rama", ".gguf")
+        escribirGgufDePrueba(gguf)
+        val info = ar.rama.ai.motor.Gguf.leer(gguf)
+        verificar("GGUF: lee la arquitectura", info != null && info.arquitectura == "qwen3" && info.capas == 36 && info.cabezasKv == 8) { info.toString() }
+        verificar("GGUF: caché por token (36 × 8 × 256)", info?.elementosKvPorToken == 73_728L) { info.toString() }
+        verificar("GGUF: cuantización IQ4_XS", info?.cuantizacion == "IQ4_XS" && info.contextoEntrenado == 40960) { info.toString() }
+        gguf.delete()
+        val falso = java.io.File.createTempFile("rama", ".gguf").apply { writeText("no soy un gguf") }
+        verificar("GGUF: rechaza lo que no es GGUF", ar.rama.ai.motor.Gguf.leer(falso) == null)
+        falso.delete()
+    }
+    run {
+        val ultra = ar.rama.ai.motor.Catalogo.ULTRA
+        val P = ar.rama.ai.motor.PlanDeMemoria
+        val holgado = P.calcular(ultra.bytesAproximados, ultra.elementosKvPorToken, 8192, 7_000_000_000L)
+        verificar("Plan: con 7 GB libres usa el tope de 8192", holgado.contexto == 8192 && holgado.alcanza) { holgado.toString() }
+        val justo = P.calcular(ultra.bytesAproximados, ultra.elementosKvPorToken, 8192, 5_500_000_000L)
+        verificar("Plan: con 5,5 GB libres baja al mínimo pero carga", justo.contexto == 2048 && justo.alcanza) { justo.toString() }
+        val medio = P.calcular(ultra.bytesAproximados, ultra.elementosKvPorToken, 8192, 5_800_000_000L)
+        verificar("Plan: con 5,8 GB libres ajusta el contexto en el medio", medio.contexto in 4096..7168 && medio.alcanza) { medio.toString() }
+        verificar("Plan: el total entra en lo libre", medio.total + P.MARGEN <= 5_800_000_000L) { medio.toString() }
+        val corto = P.calcular(ultra.bytesAproximados, ultra.elementosKvPorToken, 8192, 4_800_000_000L)
+        verificar("Plan: con 4,8 GB libres no la carga", !corto.alcanza) { corto.toString() }
+        val tipica = ultra.memoriaTipica.total
+        verificar("Ultra ocupa ~5,2 GB con 4096 tokens", tipica in 5_000_000_000L..5_400_000_000L) { tipica.toString() }
+        verificar("Ultra baja de Q4_K_M (5,0 GB) a IQ4_XS (4,6 GB)", ultra.cuantizacion == "IQ4_XS" && ultra.bytesAproximados < 4_700_000_000L)
+    }
+    run {
+        val D = ar.rama.ai.motor.Descargador
+        val archivos = listOf("Qwen3-8B-Q4_K_M.gguf", "Qwen3-8B-UD-Q4_K_XL.gguf", "Qwen3-8B-IQ4_XS.gguf", "Qwen3-8B-Q8_0.gguf")
+        verificar("Descarga: prefiere IQ4_XS para Ultra", D.elegirArchivo(archivos, "IQ4_XS") == "Qwen3-8B-IQ4_XS.gguf")
+        verificar("Descarga: si no hay IQ4_XS, Q4_K_M", D.elegirArchivo(archivos - "Qwen3-8B-IQ4_XS.gguf", "IQ4_XS") == "Qwen3-8B-Q4_K_M.gguf")
+    }
+
     println()
     println("$pruebas pruebas, $fallas fallas")
     if (fallas > 0) System.exit(1)
+}
+
+/** Escribe un GGUF v3 sin tensores, con la cabecera de un Qwen3-8B en IQ4_XS. */
+private fun escribirGgufDePrueba(archivo: java.io.File) {
+    val b = java.nio.ByteBuffer.allocate(4096).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+    fun texto(s: String) {
+        val bytes = s.toByteArray()
+        b.putLong(bytes.size.toLong())
+        b.put(bytes)
+    }
+    fun clave(k: String, tipo: Int) {
+        texto(k)
+        b.putInt(tipo)
+    }
+    val enteros = listOf(
+        "qwen3.block_count" to 36, "qwen3.embedding_length" to 4096, "qwen3.attention.head_count" to 32,
+        "qwen3.attention.head_count_kv" to 8, "qwen3.attention.key_length" to 128,
+        "qwen3.attention.value_length" to 128, "qwen3.context_length" to 40960, "general.file_type" to 30,
+    )
+    b.put("GGUF".toByteArray())
+    b.putInt(3)
+    b.putLong(0)
+    b.putLong((enteros.size + 5).toLong())
+    clave("general.architecture", 8); texto("qwen3")
+    clave("general.name", 8); texto("Qwen3 8B")
+    clave("tokenizer.ggml.tokens", 9); b.putInt(8); b.putLong(3); texto("<|im_start|>"); texto("hola"); texto("ñ")
+    clave("tokenizer.ggml.scores", 9); b.putInt(6); b.putLong(3); b.putFloat(0f); b.putFloat(1f); b.putFloat(2f)
+    clave("tokenizer.chat_template", 8); texto("{% for m in messages %}{{ m.content }}{% endfor %}")
+    for ((k, v) in enteros) {
+        clave(k, 4)
+        b.putInt(v)
+    }
+    archivo.writeBytes(b.array().copyOf(b.position()))
 }
 
 /** Un modelo que devuelve fragmentos guionados, uno por llamada, y anota lo que le pidieron. */

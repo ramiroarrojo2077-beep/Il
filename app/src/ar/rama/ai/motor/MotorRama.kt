@@ -16,8 +16,12 @@ import java.io.File
 class MotorRama private constructor(
     private val handle: Long,
     val archivo: File,
-    override val contexto: Int,
+    /** Con cuánta memoria y contexto se abrió. */
+    val plan: PlanDeMemoria,
+    /** Arquitectura leída de la cabecera del GGUF (null si no se pudo leer). */
+    val gguf: InfoGguf?,
 ) : ModeloDeLenguaje {
+    override val contexto: Int get() = plan.contexto
     @Volatile private var cerrado = false
     @Volatile private var generandoAhora = false
 
@@ -93,18 +97,30 @@ class MotorRama private constructor(
     }
 
     companion object {
-        fun abrir(archivo: File, contexto: Int, hilos: Int = hilosRecomendados()): MotorRama? {
+        fun abrir(archivo: File, plan: PlanDeMemoria, gguf: InfoGguf?, hilos: Int = hilosRecomendados()): MotorRama? {
             if (!Llama.disponible || !archivo.exists()) return null
-            val handle = Llama.nativeAbrir(archivo.absolutePath, contexto, hilos)
-            return if (handle == 0L) null else MotorRama(handle, archivo, contexto)
+            val handle = Llama.nativeAbrir(archivo.absolutePath, plan.contexto, hilos)
+            return if (handle == 0L) null else MotorRama(handle, archivo, plan, gguf)
         }
 
         /**
-         * Tokens de contexto según la RAM total del teléfono y el peso del
+         * Cuánto contexto usar: el más grande que entra en la memoria libre
+         * ([libre], en bytes), sin pasar el tope que corresponde a la RAM total
+         * del teléfono. La caché se calcula con la arquitectura real del archivo.
+         */
+        fun planear(archivo: File, gguf: InfoGguf?, ramGb: Int, libre: Long): PlanDeMemoria {
+            val kv = gguf?.elementosKvPorToken ?: Catalogo.deArchivo(archivo.name)?.elementosKvPorToken ?: 0L
+            var tope = topeDeContexto(archivo, ramGb)
+            if (gguf != null && gguf.contextoEntrenado in 1 until tope) tope = gguf.contextoEntrenado
+            return PlanDeMemoria.calcular(archivo.length(), kv, tope, libre)
+        }
+
+        /**
+         * Tope de contexto según la RAM total del teléfono y el peso del
          * archivo. Más contexto = más lugar para pensar y para las fuentes web,
          * pero también más memoria (la caché crece con cada token).
          */
-        fun contextoPara(archivo: File, ramGb: Int): Int {
+        fun topeDeContexto(archivo: File, ramGb: Int): Int {
             val peso = archivo.length()
             val grande = peso > 1_600_000_000L
             val enorme = peso > 4_000_000_000L

@@ -36,6 +36,7 @@ import ar.rama.ai.motor.Conversaciones
 import ar.rama.ai.motor.Descargador
 import ar.rama.ai.motor.Estilo
 import ar.rama.ai.motor.Estilos
+import ar.rama.ai.motor.Gguf
 import ar.rama.ai.motor.Identidad
 import ar.rama.ai.motor.Llama
 import ar.rama.ai.motor.Memoria
@@ -45,6 +46,7 @@ import ar.rama.ai.motor.MotorRama
 import ar.rama.ai.motor.NivelPensar
 import ar.rama.ai.motor.OyenteRama
 import ar.rama.ai.motor.PasoRama
+import ar.rama.ai.motor.PlanDeMemoria
 import ar.rama.ai.motor.Rama
 import ar.rama.ai.motor.RespuestaRama
 import java.io.File
@@ -138,6 +140,7 @@ class MainActivity : Activity() {
         pantallaModelo = PantallaModelo(
             this, raiz, descargas,
             modeloActivo = { motor?.archivo },
+            planActivo = { motor?.plan },
             cargando = { cargandoModelo },
             alUsar = { cargarModelo(it) },
             alQuitar = { quitarModelo(borrarPreferencia = true) },
@@ -180,16 +183,20 @@ class MainActivity : Activity() {
 
     override fun onTrimMemory(nivelMemoria: Int) {
         super.onTrimMemory(nivelMemoria)
-        @Suppress("DEPRECATION")
-        val aprieta = nivelMemoria == ComponentCallbacks2.TRIM_MEMORY_COMPLETE ||
-            nivelMemoria == ComponentCallbacks2.TRIM_MEMORY_MODERATE ||
-            nivelMemoria == ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL
+        // Un modelo grande (Rama Ultra) se suelta antes: apenas Android avisa que
+        // la memoria escasea con la app en segundo plano o que empieza a faltar
+        // mientras está abierta. Si no, Android cierra la app entera.
+        val grande = (motor?.plan?.total ?: 0L) > MODELO_GRANDE
+        val aprieta = nivelMemoria >= TRIM_MODERADO || nivelMemoria == TRIM_CRITICO ||
+            (grande && (nivelMemoria >= TRIM_FONDO || nivelMemoria == TRIM_BAJO))
         if (aprieta && !generando && motor != null && !cargandoModelo) {
             val soltar = motor
             motor = null
-            asistente?.motor = null
             modeloEnPausa = true
-            trabajador.execute { soltar?.cerrar() }
+            trabajador.execute {
+                asistente?.motor = null
+                soltar?.cerrar()
+            }
             principal.post { pintarEstadoModelo() }
         }
     }
@@ -424,7 +431,7 @@ class MainActivity : Activity() {
         val m = motor
         val (texto, color) = when {
             cargandoModelo -> "cargando el modelo…" to Colores.LILA
-            m != null -> "${m.nombre} · lista" to Colores.MENTA
+            m != null -> "${m.nombre} · lista · ${m.plan.totalLegible} de RAM" to Colores.MENTA
             modeloEnPausa -> "modelo en pausa (se recarga solo)" to Colores.LILA
             !Llama.disponible -> "sin motor en este teléfono" to Colores.ERROR
             else -> "sin modelo · tocá Modelo" to Colores.NARANJA
@@ -907,38 +914,41 @@ class MainActivity : Activity() {
             burbujaRama("Este teléfono no puede correr el modelo: ${Llama.motivoNoDisponible ?: "falta el motor"}")
             return
         }
-        val libre = memoriaLibre()
-        if (libre < archivo.length() * 11 / 10) {
-            val peso = AnalizadorAdjuntos.pesoLegible(archivo.length())
-            burbujaRama(
-                "«${archivo.name}» pesa $peso y ahora hay ${AnalizadorAdjuntos.pesoLegible(libre)} de memoria libre: si lo cargo, Android cierra la app.\n\n" +
-                    "Cerrá otras aplicaciones y probá de nuevo, o usá **${Catalogo.LIVIANA.nombre}**.",
-            )
-            return
-        }
         cargandoModelo = true
-        pintarEstadoModelo()
         val anterior = motor
         motor = null
-        asistente?.motor = null
+        pintarEstadoModelo()
         trabajador.execute {
+            val gguf = Gguf.leer(archivo)
+            // La memoria del modelo que está abierto se libera al cerrarlo.
+            val libre = memoriaLibre() + (anterior?.plan?.total ?: 0L)
+            val plan = MotorRama.planear(archivo, gguf, ramTotalGb(), libre)
+            if (!plan.alcanza) {
+                principal.post {
+                    cargandoModelo = false
+                    motor = anterior
+                    burbujaRama(faltaMemoria(archivo, plan))
+                    pintarEstadoModelo()
+                }
+                return@execute
+            }
+            asistente?.motor = null
             anterior?.cerrar()
-            val contexto = MotorRama.contextoPara(archivo, ramTotalGb())
             val abierto = try {
-                MotorRama.abrir(archivo, contexto)
+                MotorRama.abrir(archivo, plan, gguf)
             } catch (e: Throwable) {
                 null
             }
+            asistente?.motor = abierto
             principal.post {
                 cargandoModelo = false
                 motor = abierto
-                asistente?.motor = abierto
                 modeloEnPausa = false
                 if (abierto == null) {
                     burbujaRama("No pude cargar «${archivo.name}». Puede que el archivo esté incompleto, que no sea un GGUF o que al teléfono le falte memoria para esta edición.")
                 } else {
                     preferencias().edit().putString("modelo", archivo.absolutePath).apply()
-                    if (!silencioso) avisar("${abierto.nombre} lista · contexto de ${abierto.contexto} tokens")
+                    if (!silencioso) avisar("${abierto.nombre} lista · ${plan.contexto} tokens de contexto · usa ~${plan.totalLegible} de RAM")
                 }
                 pintarEstadoModelo()
                 if (pantallaModelo.visible) pantallaModelo.refrescar()
@@ -946,13 +956,25 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun faltaMemoria(archivo: File, plan: PlanDeMemoria): String {
+        val edicion = Catalogo.deArchivo(archivo.name)
+        val menor = Catalogo.EDICIONES.lastOrNull { it.memoriaTipica.total < plan.total && it != edicion }
+        return "No me alcanza la memoria para abrir **${edicion?.nombre ?: archivo.name}**: necesita unos ${plan.totalLegible} " +
+            "(pesos ${PlanDeMemoria.legible(plan.bytesPesos)}, memoria de la charla ${PlanDeMemoria.legible(plan.bytesCache)} y cálculo ${PlanDeMemoria.legible(plan.bytesComputo)}) " +
+            "y ahora hay ${PlanDeMemoria.legible(plan.libre)} libres.\n\n" +
+            "Cerrá otras aplicaciones (sobre todo juegos, cámara y navegador) y probá de nuevo" +
+            (if (menor != null) ", o usá **${menor.nombre}**, que ocupa unos ${menor.memoriaTipica.totalLegible}." else ".")
+    }
+
     private fun quitarModelo(borrarPreferencia: Boolean) {
         val anterior = motor
         motor = null
-        asistente?.motor = null
         modeloEnPausa = false
         if (borrarPreferencia) preferencias().edit().remove("modelo").apply()
-        trabajador.execute { anterior?.cerrar() }
+        trabajador.execute {
+            asistente?.motor = null
+            anterior?.cerrar()
+        }
         pintarEstadoModelo()
     }
 
@@ -964,22 +986,30 @@ class MainActivity : Activity() {
             modeloEnPausa = false
             return true
         }
-        avisar("Recargando el modelo, que había soltado por falta de memoria…")
+        avisar("Recargando el modelo, que había soltado para liberar memoria…")
         cargandoModelo = true
         pintarEstadoModelo()
         trabajador.execute {
-            val abierto = try {
-                MotorRama.abrir(guardado, MotorRama.contextoPara(guardado, ramTotalGb()))
+            val gguf = Gguf.leer(guardado)
+            val plan = MotorRama.planear(guardado, gguf, ramTotalGb(), memoriaLibre())
+            val abierto = if (!plan.alcanza) null else try {
+                MotorRama.abrir(guardado, plan, gguf)
             } catch (e: Throwable) {
                 null
             }
+            asistente?.motor = abierto
             principal.post {
                 cargandoModelo = false
                 motor = abierto
-                asistente?.motor = abierto
-                modeloEnPausa = false
                 pintarEstadoModelo()
-                if (abierto != null) enviar(pregunta) else burbujaRama("No pude recargar el modelo.")
+                when {
+                    abierto != null -> {
+                        modeloEnPausa = false
+                        enviar(pregunta)
+                    }
+                    !plan.alcanza -> burbujaRama(faltaMemoria(guardado, plan))
+                    else -> burbujaRama("No pude recargar el modelo.")
+                }
             }
         }
         return false
@@ -1218,5 +1248,12 @@ class MainActivity : Activity() {
         private const val ARCHIVO_ERROR = "ultimo-error.txt"
         private const val PEDIDO_ARCHIVO = 1001
         private const val PEDIDO_MODELO = 1002
+        /** Arriba de esto (≈ Rama Ultra) el modelo se suelta apenas escasea la memoria. */
+        private const val MODELO_GRANDE = 3_500_000_000L
+        // Niveles de onTrimMemory (varios quedaron obsoletos como constantes en API 34).
+        private const val TRIM_BAJO = 10
+        private const val TRIM_CRITICO = 15
+        private const val TRIM_FONDO = 40
+        private const val TRIM_MODERADO = 60
     }
 }
