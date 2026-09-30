@@ -17,6 +17,8 @@ import android.widget.TextView
 import ar.rama.ai.motor.Catalogo
 import ar.rama.ai.motor.Descargador
 import ar.rama.ai.motor.Edicion
+import ar.rama.ai.motor.Gguf
+import ar.rama.ai.motor.Variante
 import ar.rama.ai.motor.Identidad
 import ar.rama.ai.motor.Llama
 import java.io.File
@@ -78,7 +80,7 @@ class PantallaModelo(
             is EstadoDescarga.EnCurso -> "c" + (s.bajados / 4_000_000) + s.enPausa
             else -> s.javaClass.simpleName
         }
-        e.id + estado + (e.id in resolviendo) + errores[e.id]
+        e.id + estado + (e.id in resolviendo) + errores[e.id] + descargas.variante(e, ramDelTelefono)?.id
     } + modeloActivo()?.absolutePath + cargando()
 
     init {
@@ -152,7 +154,7 @@ class PantallaModelo(
             estilo(13.5f, Colores.TEXTO_2, Peso.NORMAL, 1.35f)
         }, lp(MATCH, WRAP) { bottomMargin = dp(12f) })
         for (edicion in Catalogo.EDICIONES) {
-            tarjetas.addView(tarjetaEdicion(edicion, edicion == recomendada), lp(MATCH, WRAP) { bottomMargin = dp(12f) })
+            tarjetas.addView(tarjetaEdicion(descargas.efectiva(edicion, ramDelTelefono), edicion.id == recomendada.id), lp(MATCH, WRAP) { bottomMargin = dp(12f) })
         }
         tarjetas.addView(tarjetaManual(), lp(MATCH, WRAP) { topMargin = dp(4f); bottomMargin = dp(12f) })
         val viejos = descargas.huerfanos()
@@ -228,9 +230,9 @@ class PantallaModelo(
         val archivo = descargas.archivoDe(edicion)
         val activo = modeloActivo()?.absolutePath == archivo.absolutePath
         val estado = descargas.estado(edicion)
-        val tono = when (edicion) {
-            Catalogo.ULTRA -> Colores.FUEGO
-            Catalogo.COMPLETA -> Colores.FUCSIA
+        val tono = when (edicion.id) {
+            Catalogo.ULTRA.id -> Colores.FUEGO
+            Catalogo.COMPLETA.id -> Colores.FUCSIA
             else -> Colores.CIAN
         }
         val radio = dp(22f).toFloat()
@@ -271,7 +273,10 @@ class PantallaModelo(
             sellos.addView(actividad.pastilla(texto, Colores.MENTA, Trazos.visto()), lp(WRAP, WRAP) { rightMargin = dp(6f) })
         }
         if (recomendada) sellos.addView(actividad.pastilla("Recomendada para vos", Colores.AMARILLO, Trazos.destello(), true), lp(WRAP, WRAP) { rightMargin = dp(6f) })
-        if (edicion == Catalogo.ULTRA && !activo) sellos.addView(actividad.pastilla("La más potente", Colores.FUEGO, Trazos.fuego(), true), lp(WRAP, WRAP) { rightMargin = dp(6f) })
+        if (edicion.id == Catalogo.ULTRA.id && !activo) sellos.addView(actividad.pastilla("La más potente", Colores.FUEGO, Trazos.fuego(), true), lp(WRAP, WRAP) { rightMargin = dp(6f) })
+        if (estado is EstadoDescarga.Terminada && archivo.exists()) {
+            cuantizacionDe(archivo)?.let { sellos.addView(actividad.pastilla(it, Colores.CELESTE), lp(WRAP, WRAP) { rightMargin = dp(6f) }) }
+        }
         if (sellos.childCount > 0) caja.addView(sellos, lp(MATCH, WRAP) { topMargin = dp(12f) })
         caja.addView(TextView(actividad).apply {
             text = edicion.descripcion
@@ -328,13 +333,62 @@ class PantallaModelo(
                         estilo(12.5f, Colores.ERROR, Peso.NEGRITA, 1.3f)
                     }, lp(MATCH, WRAP) { bottomMargin = dp(8f) })
                 }
-                acciones.addView(actividad.boton(if (error != null) "Reintentar" else "Descargar ${edicion.nombre}", if (recomendada) Colores.MARCA else intArrayOf(tono, Colores.VIOLETA), Trazos.descargar()) {
+                if (edicion.variantes.isNotEmpty()) acciones.addView(selectorDeVariante(edicion, tono), lp(MATCH, WRAP) { bottomMargin = dp(12f) })
+                acciones.addView(actividad.boton(if (error != null) "Reintentar" else "Descargar ${edicion.nombre} (${peso(edicion.bytesAproximados)})", if (recomendada) Colores.MARCA else intArrayOf(tono, Colores.VIOLETA), Trazos.descargar()) {
                     descargar(edicion)
                 }, lp(MATCH, WRAP))
             }
         }
         caja.addView(acciones, lp(MATCH, WRAP) { topMargin = dp(14f) })
         return caja
+    }
+
+    /** Dos pastillas para elegir cómo guardar los pesos (menos RAM o más precisión). */
+    private fun selectorDeVariante(edicion: Edicion, tono: Int): View {
+        val caja = LinearLayout(actividad).apply { orientation = LinearLayout.VERTICAL }
+        val elegida = descargas.variante(edicion, ramDelTelefono)
+        caja.addView(actividad.rotulo("Memoria", tono), lp(WRAP, WRAP) { bottomMargin = dp(8f) })
+        val fila = LinearLayout(actividad).apply { orientation = LinearLayout.HORIZONTAL }
+        edicion.variantes.forEachIndexed { i, v ->
+            val sel = v.id == elegida?.id
+            val radio = dp(16f).toFloat()
+            fila.addView(LinearLayout(actividad).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setPadding(dp(10f), dp(9f), dp(10f), dp(9f))
+                background = if (sel) pulsable(bordeDegradado(intArrayOf(tono, Colores.VIOLETA), Colores.mezclar(Colores.SUPERFICIE_ALTA, tono, 0.14f), radio, dp(1.5f)), radio)
+                else pulsable(Colores.SUPERFICIE_ALTA, radio, Colores.BORDE, dp(1f))
+                addView(TextView(actividad).apply {
+                    text = v.nombre
+                    estilo(13.5f, if (sel) Colores.TEXTO else Colores.TEXTO_2, Peso.EXTRA, 1f)
+                    gravity = Gravity.CENTER
+                })
+                val uso = ar.rama.ai.motor.PlanDeMemoria.estimar(v.bytesAproximados, edicion.elementosKvPorToken, 4096)
+                addView(TextView(actividad).apply {
+                    text = "${v.cuantizacion} · usa ~${uso.totalLegible}"
+                    estilo(11.5f, if (sel) tono else Colores.TEXTO_3, Peso.NEGRITA, 1f)
+                    gravity = Gravity.CENTER
+                }, lp(WRAP, WRAP) { topMargin = dp(3f) })
+                setOnClickListener {
+                    descargas.elegirVariante(edicion, v)
+                    refrescar()
+                }
+            }, lp(0, WRAP, 1f) { if (i < edicion.variantes.size - 1) rightMargin = dp(8f) })
+        }
+        caja.addView(fila)
+        if (elegida != null) caja.addView(TextView(actividad).apply {
+            text = elegida.descripcion
+            estilo(12.5f, Colores.TEXTO_2, Peso.NORMAL, 1.3f)
+        }, lp(MATCH, WRAP) { topMargin = dp(8f) })
+        return caja
+    }
+
+    private val cuantizaciones = HashMap<String, String?>()
+
+    /** La cuantización real del archivo bajado, leída de su cabecera (con caché). */
+    private fun cuantizacionDe(archivo: File): String? {
+        val clave = archivo.absolutePath + ":" + archivo.length() + ":" + archivo.lastModified()
+        return cuantizaciones.getOrPut(clave) { Gguf.leer(archivo)?.cuantizacion }
     }
 
     private fun tarjetaManual(): View {

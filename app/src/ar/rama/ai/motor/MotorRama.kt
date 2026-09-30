@@ -123,10 +123,12 @@ class MotorRama private constructor(
         fun topeDeContexto(archivo: File, ramGb: Int): Int {
             val peso = archivo.length()
             val grande = peso > 1_600_000_000L
-            val enorme = peso > 4_000_000_000L
+            val enorme = peso > 3_500_000_000L
             return when {
                 ramGb >= 15 -> if (enorme) 12288 else 16384
-                ramGb >= 11 -> 8192
+                // Con un modelo de 8 B en 12 GB alcanza 6144: deja lugar para pensar
+                // en Max y ahorra ~160 MB de caché frente a 8192.
+                ramGb >= 11 -> if (enorme) 6144 else 8192
                 ramGb >= 7 -> if (enorme) 4096 else if (grande) 6144 else 8192
                 ramGb >= 5 -> if (enorme) 2048 else if (grande) 4096 else 6144
                 ramGb in 1..4 -> if (grande) 2048 else 4096

@@ -246,7 +246,8 @@ fun main() {
         falso.delete()
     }
     run {
-        val ultra = ar.rama.ai.motor.Catalogo.ULTRA
+        val C = ar.rama.ai.motor.Catalogo
+        val ultra = C.ULTRA.con(C.ULTRA_EQUILIBRADA)
         val P = ar.rama.ai.motor.PlanDeMemoria
         val holgado = P.calcular(ultra.bytesAproximados, ultra.elementosKvPorToken, 8192, 7_000_000_000L)
         verificar("Plan: con 7 GB libres usa el tope de 8192", holgado.contexto == 8192 && holgado.alcanza) { holgado.toString() }
@@ -258,14 +259,34 @@ fun main() {
         val corto = P.calcular(ultra.bytesAproximados, ultra.elementosKvPorToken, 8192, 4_800_000_000L)
         verificar("Plan: con 4,8 GB libres no la carga", !corto.alcanza) { corto.toString() }
         val tipica = ultra.memoriaTipica.total
-        verificar("Ultra ocupa ~5,2 GB con 4096 tokens", tipica in 5_000_000_000L..5_400_000_000L) { tipica.toString() }
-        verificar("Ultra baja de Q4_K_M (5,0 GB) a IQ4_XS (4,6 GB)", ultra.cuantizacion == "IQ4_XS" && ultra.bytesAproximados < 4_700_000_000L)
+        verificar("Ultra Equilibrada (IQ4_XS) ocupa ~5,2 GB con 4096 tokens", tipica in 5_000_000_000L..5_400_000_000L) { tipica.toString() }
+        val compacta = C.ULTRA
+        verificar("Ultra viene Compacta (IQ3_M) por defecto", compacta.cuantizacion == "IQ3_M" && compacta.bytesAproximados < 4_000_000_000L)
+        val tipicaCompacta = compacta.memoriaTipica.total
+        verificar("Ultra Compacta ocupa ~4,5 GB con 4096 tokens", tipicaCompacta in 4_300_000_000L..4_700_000_000L) { tipicaCompacta.toString() }
+        val justaCompacta = P.calcular(compacta.bytesAproximados, compacta.elementosKvPorToken, 6144, 4_800_000_000L)
+        verificar("Plan: con 4,8 GB libres la Compacta sí carga", justaCompacta.alcanza && justaCompacta.contexto == 2048) { justaCompacta.toString() }
+        verificar("Variante: Compacta en 12 GB, Equilibrada en 16 GB",
+            C.varianteRecomendada(C.ULTRA, 12) == C.ULTRA_COMPACTA && C.varianteRecomendada(C.ULTRA, 16) == C.ULTRA_EQUILIBRADA)
+        verificar("Variante: las otras ediciones no tienen", C.varianteRecomendada(C.COMPLETA, 12) == null)
+        verificar("10 GB → Ultra", C.recomendada(10) == C.ULTRA)
+        val falso = java.io.File.createTempFile("ultra", ".gguf")
+        java.io.RandomAccessFile(falso, "rw").use { it.setLength(3_900_000_000L) }
+        verificar("Tope de contexto de Ultra en 12 GB: 6144", ar.rama.ai.motor.MotorRama.topeDeContexto(falso, 12) == 6144)
+        verificar("Tope de contexto de Ultra en 16 GB: 12288", ar.rama.ai.motor.MotorRama.topeDeContexto(falso, 16) == 12288)
+        falso.delete()
     }
     run {
         val D = ar.rama.ai.motor.Descargador
         val archivos = listOf("Qwen3-8B-Q4_K_M.gguf", "Qwen3-8B-UD-Q4_K_XL.gguf", "Qwen3-8B-IQ4_XS.gguf", "Qwen3-8B-Q8_0.gguf")
-        verificar("Descarga: prefiere IQ4_XS para Ultra", D.elegirArchivo(archivos, "IQ4_XS") == "Qwen3-8B-IQ4_XS.gguf")
-        verificar("Descarga: si no hay IQ4_XS, Q4_K_M", D.elegirArchivo(archivos - "Qwen3-8B-IQ4_XS.gguf", "IQ4_XS") == "Qwen3-8B-Q4_K_M.gguf")
+        val equilibrada = ar.rama.ai.motor.Catalogo.ULTRA_EQUILIBRADA.let { listOf(it.cuantizacion) + it.alternativas }
+        verificar("Descarga: Equilibrada prefiere IQ4_XS", D.elegirArchivo(archivos, equilibrada) == "Qwen3-8B-IQ4_XS.gguf")
+        verificar("Descarga: si no hay IQ4_XS, Q4_K_M", D.elegirArchivo(archivos - "Qwen3-8B-IQ4_XS.gguf", equilibrada) == "Qwen3-8B-Q4_K_M.gguf")
+        val compacta = ar.rama.ai.motor.Catalogo.ULTRA.cuantizaciones
+        val bartowski = listOf("Qwen_Qwen3-8B-Q4_K_M.gguf", "Qwen_Qwen3-8B-IQ3_M.gguf", "Qwen_Qwen3-8B-Q3_K_M.gguf", "Qwen_Qwen3-8B-IQ4_XS.gguf")
+        verificar("Descarga: Compacta prefiere IQ3_M", D.elegirArchivo(bartowski, compacta) == "Qwen_Qwen3-8B-IQ3_M.gguf")
+        verificar("Descarga: Compacta sin IQ3_M → Q3_K_M", D.elegirArchivo(bartowski - "Qwen_Qwen3-8B-IQ3_M.gguf", compacta) == "Qwen_Qwen3-8B-Q3_K_M.gguf")
+        verificar("Descarga: ignora las UD-", D.elegirArchivo(listOf("Qwen3-8B-UD-IQ3_M.gguf", "Qwen3-8B-Q3_K_M.gguf"), compacta) == "Qwen3-8B-Q3_K_M.gguf")
     }
 
     println()

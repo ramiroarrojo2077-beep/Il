@@ -29,21 +29,29 @@ tres tamaños y la app recomienda **el más potente que entra en la RAM** del te
 |---|---|---|---|---|---|
 | Rama Liviana | 1.7 B | Q4_K_M | ~1,1 GB | ~1,6 GB | 4 GB |
 | Rama Completa | 4 B | Q4_K_M | ~2,5 GB | ~3,1 GB | 6 GB |
-| **Rama Ultra** | **8 B** | **IQ4_XS** | ~4,6 GB | ~5,2 GB | 12 GB |
+| **Rama Ultra · Compacta** | **8 B** | **IQ3_M** | ~3,9 GB | **~4,5 GB** | 10 GB |
+| Rama Ultra · Equilibrada | 8 B | IQ4_XS | ~4,6 GB | ~5,2 GB | 16 GB (o a elección) |
 
 ### Memoria
 
-- **Rama Ultra viene en IQ4_XS**: 4,6 GB en vez de los 5,0 GB de Q4_K_M, casi sin
-  pérdida de calidad. Si ningún espejo tiene IQ4_XS, baja la Q4_K_M oficial.
+- **Rama Ultra tiene dos variantes de memoria**, elegibles antes de bajarla:
+  **Compacta** (IQ3_M, 3,9 GB, la predeterminada en teléfonos de menos de 16 GB) y
+  **Equilibrada** (IQ4_XS, 4,6 GB). Q4_K_M ocuparía 5,0 GB. Si un repositorio no
+  tiene la cuantización pedida, prueba las siguientes en orden (Q3_K_M, IQ4_XS…).
 - **El contexto se calcula con la RAM libre real** al abrir el modelo: la app lee
   la arquitectura del propio GGUF (capas, cabezas KV), calcula lo que ocupa cada token
   en la caché (el motor la guarda en q8_0) y elige el contexto más grande que entra
-  dejando aire para Android, entre 2048 y el tope del teléfono (8192 en 12 GB,
-  hasta 16 384 en 16 GB). Si ni con 2048 entra, no la abre y explica cuánto falta.
+  dejando aire para Android, entre 2048 y el tope del teléfono. Para Ultra el tope
+  es 6144 tokens en 12 GB (alcanza para pensar en Max y ahorra ~160 MB frente a
+  8192) y 12 288 en 16 GB. Si ni con 2048 entra, no la abre, explica cuánto falta y
+  sugiere la variante Compacta o una edición más chica.
 - **Se suelta antes**: con un modelo de más de 3,5 GB, apenas Android avisa que la
   memoria escasea (con la app en segundo plano, o baja mientras está abierta), el
   modelo se libera y se recarga solo en la próxima pregunta, en vez de que Android
   cierre la app.
+- **Se suelta por inactividad**: si la app queda 2 minutos en segundo plano con
+  Ultra cargada, libera esos GB para el resto del teléfono y la vuelve a abrir sola
+  al volver a la app.
 - Al cambiar de edición se cuenta la memoria que libera la que estaba abierta, y si
   la nueva no entra, la anterior queda cargada.
 Entrenar un modelo desde cero no es posible acá; lo "propio" de Rama es todo lo que
@@ -90,7 +98,7 @@ compila `app/src` a un dex nuevo, reemplaza recursos, assets y manifiesto, y fir
 app/src/ar/rama/ai/          interfaz: MainActivity, pantallas, tema, íconos, Markdown
 app/src/ar/rama/ai/motor/    Asistente, MotorRama, Catalogo, NivelPensar, Buscador…
 app/res, app/assets          ícono adaptativo, tema, Nunito, base de conocimiento
-prueba/PruebasMotor.kt       60 pruebas del motor (JVM, con un modelo simulado)
+prueba/PruebasMotor.kt       70 pruebas del motor (JVM, con un modelo simulado)
 prueba/robolectric/          prueba de la interfaz sobre el APK compilado
 ```
 

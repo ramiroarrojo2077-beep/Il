@@ -27,7 +27,7 @@ object Descargador {
             intentos.add("${fuente.repositorio}/${fuente.archivo}: no respondió")
         }
         for (fuente in edicion.fuentes) {
-            val encontrado = buscarEnRepositorio(fuente.repositorio, edicion.cuantizacion)
+            val encontrado = buscarEnRepositorio(fuente.repositorio, edicion.cuantizaciones)
             if (encontrado != null) return Resolucion(encontrado, intentos)
             intentos.add("${fuente.repositorio}: sin un .gguf utilizable")
         }
@@ -57,7 +57,7 @@ object Descargador {
         }
     }
 
-    fun buscarEnRepositorio(repositorio: String, preferida: String = "Q4_K_M"): String? {
+    fun buscarEnRepositorio(repositorio: String, preferidas: List<String> = listOf("Q4_K_M")): String? {
         val json = Red.get(
             "https://huggingface.co/api/models/$repositorio",
             tiempo = 15_000,
@@ -68,20 +68,21 @@ object Descargador {
             val nombres = (0 until hermanos.length())
                 .mapNotNull { hermanos.optJSONObject(it)?.optString("rfilename") }
                 .filter { it.endsWith(".gguf", ignoreCase = true) && !it.contains("-of-") && !it.contains("mmproj", true) }
-            val elegido = elegirArchivo(nombres, preferida) ?: return null
+            val elegido = elegirArchivo(nombres, preferidas) ?: return null
             urlDeArchivo(repositorio, elegido)
         } catch (e: Exception) {
             null
         }
     }
 
-    /** Entre los .gguf de un repositorio, la cuantización preferida y si no, la más parecida. */
-    fun elegirArchivo(nombres: List<String>, preferida: String): String? {
+    /** Entre los .gguf de un repositorio, la primera cuantización de [preferidas] que haya. */
+    fun elegirArchivo(nombres: List<String>, preferidas: List<String>): String? {
         fun con(etiqueta: String) = nombres.firstOrNull {
-            Regex("(^|[-_.])" + Regex.escape(etiqueta) + "([-_.]|$)", RegexOption.IGNORE_CASE).containsMatchIn(it)
+            !it.contains("UD-", true) &&
+                Regex("(^|[-_.])" + Regex.escape(etiqueta) + "([-_.]|$)", RegexOption.IGNORE_CASE).containsMatchIn(it)
         }
-        return con(preferida)
-            ?: con("Q4_K_M")
+        for (etiqueta in preferidas) con(etiqueta)?.let { return it }
+        return con("Q4_K_M")
             ?: nombres.firstOrNull { it.contains("Q4", true) && !it.contains("UD-", true) }
             ?: nombres.firstOrNull { it.contains("Q5", true) }
             ?: nombres.firstOrNull()

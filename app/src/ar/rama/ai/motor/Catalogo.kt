@@ -4,6 +4,22 @@ package ar.rama.ai.motor
 data class Fuente(val repositorio: String, val archivo: String)
 
 /**
+ * Una forma de guardar los pesos de una edición. Menos bits por peso = menos
+ * RAM y un poco menos de precisión; el modelo, la identidad y todo lo demás
+ * son iguales.
+ */
+data class Variante(
+    val id: String,
+    val nombre: String,
+    val descripcion: String,
+    val cuantizacion: String,
+    /** Si el repositorio no tiene la preferida, en este orden. */
+    val alternativas: List<String>,
+    val bytesAproximados: Long,
+    val fuentes: List<Fuente>,
+)
+
+/**
  * Una edición del modelo Rama. Es siempre el mismo modelo (misma identidad,
  * mismas herramientas, mismos niveles de pensamiento); lo que cambia es el
  * tamaño de la red que escribe, para que entre en la memoria del teléfono.
@@ -21,7 +37,21 @@ data class Edicion(
     val cuantizacion: String,
     /** capas × cabezas KV × (dim. clave + dim. valor): lo que ocupa cada token de contexto. */
     val elementosKvPorToken: Long,
+    /** Si no la tiene el repositorio, estas cuantizaciones en este orden. */
+    val alternativas: List<String> = listOf("Q4_K_M"),
+    /** Formas de guardar los pesos para elegir (vacío = una sola). */
+    val variantes: List<Variante> = emptyList(),
 ) {
+    /** La misma edición, con los pesos de otra variante. */
+    fun con(variante: Variante): Edicion = copy(
+        bytesAproximados = variante.bytesAproximados,
+        fuentes = variante.fuentes,
+        cuantizacion = variante.cuantizacion,
+        alternativas = variante.alternativas,
+    )
+
+    val cuantizaciones: List<String> get() = (listOf(cuantizacion) + alternativas).distinct()
+
     /** Lo que ocupa en RAM con un contexto típico de 4096 tokens. */
     val memoriaTipica: PlanDeMemoria get() = PlanDeMemoria.estimar(bytesAproximados, elementosKvPorToken, 4096)
 
@@ -64,19 +94,34 @@ object Catalogo {
     )
 
     /**
-     * La edición grande viene cuantizada en IQ4_XS: 4,6 GB en vez de los 5,0 GB
-     * de Q4_K_M, con una pérdida de calidad mínima. Los pesos se leen del
+     * Ultra: IQ3_M (Compacta, 3,9 GB) en teléfonos de menos de 16 GB, o IQ4_XS
+     * (Equilibrada, 4,6 GB). Q4_K_M ocuparía 5,0 GB. Los pesos se leen del
      * archivo mapeado en memoria, así que son páginas que Android puede soltar y
      * volver a leer si le hace falta.
      */
-    val ULTRA = Edicion(
-        id = "rama-ultra",
-        nombre = "Rama Ultra",
-        parametros = "8 B",
+    val ULTRA_COMPACTA = Variante(
+        id = "compacta",
+        nombre = "Compacta",
+        descripcion = "La que menos RAM usa. Pierde un poco de precisión, pero en general sigue rindiendo más que la Completa.",
+        cuantizacion = "IQ3_M",
+        alternativas = listOf("Q3_K_M", "IQ4_XS", "Q4_K_M"),
+        bytesAproximados = 3_900_000_000L,
+        fuentes = listOf(
+            Fuente("bartowski/Qwen_Qwen3-8B-GGUF", "Qwen_Qwen3-8B-IQ3_M.gguf"),
+            Fuente("unsloth/Qwen3-8B-GGUF", "Qwen3-8B-Q3_K_M.gguf"),
+            Fuente("bartowski/Qwen_Qwen3-8B-GGUF", "Qwen_Qwen3-8B-Q3_K_M.gguf"),
+            // Si no hay ninguna de 3 bits, la Equilibrada.
+            Fuente("unsloth/Qwen3-8B-GGUF", "Qwen3-8B-IQ4_XS.gguf"),
+        ),
+    )
+
+    val ULTRA_EQUILIBRADA = Variante(
+        id = "equilibrada",
+        nombre = "Equilibrada",
+        descripcion = "Casi toda la precisión del modelo, con 700 MB más de RAM que la Compacta.",
+        cuantizacion = "IQ4_XS",
+        alternativas = listOf("Q4_K_S", "Q4_K_M"),
         bytesAproximados = 4_560_000_000L,
-        ramRecomendadaGb = 12,
-        descripcion = "La más potente que puede correr un teléfono: el doble de parámetros que la Completa, más conocimiento y el mejor razonamiento. " +
-            "Optimizada para la RAM: pesos IQ4_XS y un contexto que se ajusta a la memoria libre. Pide 12 GB de RAM y es más lenta.",
         fuentes = listOf(
             Fuente("unsloth/Qwen3-8B-GGUF", "Qwen3-8B-IQ4_XS.gguf"),
             Fuente("bartowski/Qwen_Qwen3-8B-GGUF", "Qwen_Qwen3-8B-IQ4_XS.gguf"),
@@ -84,9 +129,29 @@ object Catalogo {
             Fuente("Qwen/Qwen3-8B-GGUF", "Qwen3-8B-Q4_K_M.gguf"),
             Fuente("ggml-org/Qwen3-8B-GGUF", "Qwen3-8B-Q4_K_M.gguf"),
         ),
-        cuantizacion = "IQ4_XS",
-        elementosKvPorToken = 36L * 8 * (128 + 128),
     )
+
+    val ULTRA = Edicion(
+        id = "rama-ultra",
+        nombre = "Rama Ultra",
+        parametros = "8 B",
+        bytesAproximados = ULTRA_COMPACTA.bytesAproximados,
+        ramRecomendadaGb = 10,
+        descripcion = "La más potente que puede correr un teléfono: el doble de parámetros que la Completa, más conocimiento y el mejor razonamiento. " +
+            "Optimizada para la RAM: pesos de 3 o 4 bits y un contexto que se ajusta a la memoria libre. Es más lenta.",
+        fuentes = ULTRA_COMPACTA.fuentes,
+        cuantizacion = ULTRA_COMPACTA.cuantizacion,
+        elementosKvPorToken = 36L * 8 * (128 + 128),
+        alternativas = ULTRA_COMPACTA.alternativas,
+        variantes = listOf(ULTRA_COMPACTA, ULTRA_EQUILIBRADA),
+    )
+
+    /** La variante que conviene: la Equilibrada sólo si sobra memoria (16 GB o más). */
+    fun varianteRecomendada(edicion: Edicion, ramGb: Int): Variante? = when {
+        edicion.variantes.isEmpty() -> null
+        edicion.id == ULTRA.id -> if (ramGb >= 16) ULTRA_EQUILIBRADA else ULTRA_COMPACTA
+        else -> edicion.variantes.first()
+    }
 
     val EDICIONES = listOf(LIVIANA, COMPLETA, ULTRA)
 

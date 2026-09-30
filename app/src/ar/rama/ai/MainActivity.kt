@@ -189,16 +189,44 @@ class MainActivity : Activity() {
         val grande = (motor?.plan?.total ?: 0L) > MODELO_GRANDE
         val aprieta = nivelMemoria >= TRIM_MODERADO || nivelMemoria == TRIM_CRITICO ||
             (grande && (nivelMemoria >= TRIM_FONDO || nivelMemoria == TRIM_BAJO))
-        if (aprieta && !generando && motor != null && !cargandoModelo) {
-            val soltar = motor
-            motor = null
-            modeloEnPausa = true
-            trabajador.execute {
-                asistente?.motor = null
-                soltar?.cerrar()
-            }
-            principal.post { pintarEstadoModelo() }
+        if (aprieta) soltarModelo()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // Con la app en segundo plano, un modelo grande se suelta a los 2 minutos:
+        // son varios GB que el resto del teléfono puede usar mientras tanto.
+        principal.removeCallbacks(soltarPorInactividad)
+        if ((motor?.plan?.total ?: 0L) > MODELO_GRANDE) principal.postDelayed(soltarPorInactividad, INACTIVIDAD)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        principal.removeCallbacks(soltarPorInactividad)
+        // Si se soltó por inactividad, se vuelve a abrir en cuanto la app vuelve al frente.
+        if (soltadoPorInactividad && modeloEnPausa && motor == null && !cargandoModelo) {
+            soltadoPorInactividad = false
+            preferencias().getString("modelo", null)?.let { File(it) }?.takeIf { it.exists() }?.let { cargarModelo(it, silencioso = true) }
         }
+    }
+
+    private var soltadoPorInactividad = false
+    private val soltarPorInactividad = Runnable {
+        if (soltarModelo()) soltadoPorInactividad = true
+    }
+
+    /** Cierra el modelo para liberar memoria; se recarga solo en la próxima pregunta. */
+    private fun soltarModelo(): Boolean {
+        if (generando || motor == null || cargandoModelo) return false
+        val soltar = motor
+        motor = null
+        modeloEnPausa = true
+        trabajador.execute {
+            asistente?.motor = null
+            soltar?.cerrar()
+        }
+        principal.post { pintarEstadoModelo() }
+        return true
     }
 
     private fun preferencias(): SharedPreferences = getSharedPreferences("rama", Context.MODE_PRIVATE)
@@ -958,12 +986,21 @@ class MainActivity : Activity() {
 
     private fun faltaMemoria(archivo: File, plan: PlanDeMemoria): String {
         val edicion = Catalogo.deArchivo(archivo.name)
-        val menor = Catalogo.EDICIONES.lastOrNull { it.memoriaTipica.total < plan.total && it != edicion }
+        val ram = ramTotalGb()
+        // Primero, la misma edición con pesos más livianos; si no, una edición más chica.
+        val variante = edicion?.variantes?.filter { it.bytesAproximados < plan.bytesPesos - 200_000_000L }?.minByOrNull { it.bytesAproximados }
+        val menor = Catalogo.EDICIONES.map { descargas.efectiva(it, ram) }
+            .lastOrNull { it.memoriaTipica.total < plan.total && it.id != edicion?.id }
+        val sugerencia = when {
+            variante != null -> ", o borrala y bajá la variante **${variante.nombre}** (${variante.cuantizacion}), que ocupa unos " +
+                PlanDeMemoria.estimar(variante.bytesAproximados, edicion?.elementosKvPorToken ?: 0L, 4096).totalLegible + "."
+            menor != null -> ", o usá **${menor.nombre}**, que ocupa unos ${menor.memoriaTipica.totalLegible}."
+            else -> "."
+        }
         return "No me alcanza la memoria para abrir **${edicion?.nombre ?: archivo.name}**: necesita unos ${plan.totalLegible} " +
             "(pesos ${PlanDeMemoria.legible(plan.bytesPesos)}, memoria de la charla ${PlanDeMemoria.legible(plan.bytesCache)} y cálculo ${PlanDeMemoria.legible(plan.bytesComputo)}) " +
             "y ahora hay ${PlanDeMemoria.legible(plan.libre)} libres.\n\n" +
-            "Cerrá otras aplicaciones (sobre todo juegos, cámara y navegador) y probá de nuevo" +
-            (if (menor != null) ", o usá **${menor.nombre}**, que ocupa unos ${menor.memoriaTipica.totalLegible}." else ".")
+            "Cerrá otras aplicaciones (sobre todo juegos, cámara y navegador) y probá de nuevo" + sugerencia
     }
 
     private fun quitarModelo(borrarPreferencia: Boolean) {
@@ -1250,6 +1287,8 @@ class MainActivity : Activity() {
         private const val PEDIDO_MODELO = 1002
         /** Arriba de esto (≈ Rama Ultra) el modelo se suelta apenas escasea la memoria. */
         private const val MODELO_GRANDE = 3_500_000_000L
+        /** Cuánto espera en segundo plano antes de soltar un modelo grande. */
+        private const val INACTIVIDAD = 2 * 60 * 1000L
         // Niveles de onTrimMemory (varios quedaron obsoletos como constantes en API 34).
         private const val TRIM_BAJO = 10
         private const val TRIM_CRITICO = 15

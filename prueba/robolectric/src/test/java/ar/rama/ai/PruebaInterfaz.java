@@ -144,6 +144,19 @@ public class PruebaInterfaz {
         assertNotNull(buscarTexto(raiz, "Rama Completa"));
         assertNotNull(buscarTexto(raiz, "Rama Ultra"));
         capturar(a, "5-modelo");
+        // Bajar hasta la tarjeta de Rama Ultra, con el selector de memoria.
+        TextView ultra = buscarTexto(raiz, "Rama Ultra");
+        View v = ultra;
+        int arriba = 0;
+        while (v != null && !(v.getParent() instanceof android.widget.ScrollView)) {
+            arriba += v.getTop();
+            v = (View) v.getParent();
+        }
+        assertNotNull("no encontré el desplazable del modelo", v);
+        ((android.widget.ScrollView) v.getParent()).scrollTo(0, Math.max(0, arriba - 40));
+        assertNotNull("falta el selector de memoria de Ultra", buscarTexto(raiz, "Compacta"));
+        assertNotNull(buscarTexto(raiz, "Equilibrada"));
+        capturar(a, "5b-ultra");
         a.onBackPressed();
         esperar(5);
 

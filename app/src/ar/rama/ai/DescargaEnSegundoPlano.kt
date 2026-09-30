@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.Uri
 import ar.rama.ai.motor.Catalogo
 import ar.rama.ai.motor.Edicion
+import ar.rama.ai.motor.Variante
 import java.io.File
 
 /** En qué anda la descarga de una edición. */
@@ -26,6 +27,20 @@ class DescargaEnSegundoPlano(private val contexto: Context) {
     private val preferencias = contexto.getSharedPreferences("descargas", Context.MODE_PRIVATE)
 
     val carpeta: File? get() = contexto.getExternalFilesDir(CARPETA)
+
+    /** La variante elegida para una edición (o la recomendada para la RAM del teléfono). */
+    fun variante(edicion: Edicion, ramGb: Int): Variante? {
+        if (edicion.variantes.isEmpty()) return null
+        val id = preferencias.getString("variante-" + edicion.id, null)
+        return edicion.variantes.firstOrNull { it.id == id } ?: Catalogo.varianteRecomendada(edicion, ramGb)
+    }
+
+    fun elegirVariante(edicion: Edicion, variante: Variante) {
+        preferencias.edit().putString("variante-" + edicion.id, variante.id).apply()
+    }
+
+    /** La edición con los pesos de la variante elegida: tamaño, fuentes y cuantización. */
+    fun efectiva(edicion: Edicion, ramGb: Int): Edicion = variante(edicion, ramGb)?.let { edicion.con(it) } ?: edicion
 
     fun archivoDe(edicion: Edicion): File = File(carpeta ?: File(contexto.filesDir, CARPETA), edicion.archivoLocal)
 
