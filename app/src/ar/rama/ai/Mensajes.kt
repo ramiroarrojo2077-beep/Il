@@ -23,14 +23,14 @@ import java.util.Locale
 /**
  * La tarjeta "Pensando…" que acompaña a cada respuesta: muestra en vivo los
  * pasos (habilidades, búsqueda, lectura) y el razonamiento del modelo, con el
- * color del nivel elegido. Al terminar se pliega y queda tocable para releerla.
+ * nivel elegido. Al terminar se pliega y queda tocable para releerla.
  */
 class TarjetaPensar(
     private val contexto: Context,
     private val nivel: NivelPensar,
     private val alCrecer: () -> Unit,
 ) {
-    private val color = Colores.principalDeNivel(nivel)
+    private val color = Colores.TEXTO_2
     private val principal = Handler(Looper.getMainLooper())
     private val inicio = SystemClock.elapsedRealtime()
     private var finPensar = 0L
@@ -42,16 +42,16 @@ class TarjetaPensar(
 
     val vista: LinearLayout = LinearLayout(contexto).apply {
         orientation = LinearLayout.VERTICAL
-        background = bordeDegradado(Colores.deNivel(nivel).map { Colores.alfa(it, 0.75f) }.toIntArray(), Colores.alfa(Colores.SUPERFICIE, 0.94f), dp(18f).toFloat(), dp(1.3f))
+        background = redondeado(Colores.SUPERFICIE, dp(12f).toFloat(), Colores.BORDE_TENUE, dp(1f))
         setPadding(dp(14f), dp(11f), dp(14f), dp(11f))
     }
     private val titulo = TextView(contexto).apply {
         text = if (nivel.piensa) "Pensando…" else "Preparando…"
-        estilo(13f, color, Peso.EXTRA, 1f)
+        estilo(13f, color, Peso.MEDIO, 1f)
     }
     private val tiempo = TextView(contexto).apply { estilo(12f, Colores.TEXTO_3, Peso.MEDIO, 1f) }
     private val flecha = ImageView(contexto).apply {
-        setImageDrawable(Icono(Trazos.chevron(), color, 2.4f))
+        setImageDrawable(Icono(Trazos.chevron(), Colores.TEXTO_3, 2.2f))
         rotation = 180f
     }
     private val cuerpo = LinearLayout(contexto).apply { orientation = LinearLayout.VERTICAL }
@@ -75,7 +75,7 @@ class TarjetaPensar(
             gravity = Gravity.CENTER_VERTICAL
         }
         val (trazo, relleno) = Trazos.nivel(nivel)
-        cabecera.addView(ImageView(contexto).apply { setImageDrawable(Icono(trazo, color, 2.2f, relleno, Colores.deNivel(nivel))) },
+        cabecera.addView(ImageView(contexto).apply { setImageDrawable(Icono(trazo, Colores.ACENTO_CLARO, 2f, relleno)) },
             lp(contexto.dp(16f), contexto.dp(16f)) { rightMargin = contexto.dp(8f) })
         cabecera.addView(titulo, lp(0, WRAP, 1f))
         cabecera.addView(tiempo, lp(WRAP, WRAP) { rightMargin = contexto.dp(8f) })
@@ -101,7 +101,7 @@ class TarjetaPensar(
         val textos = LinearLayout(contexto).apply { orientation = LinearLayout.VERTICAL }
         textos.addView(TextView(contexto).apply {
             text = paso.titulo
-            estilo(12.5f, tono, Peso.NEGRITA, 1.1f)
+            estilo(12.5f, Colores.TEXTO_2, Peso.MEDIO, 1.1f)
         })
         textos.addView(TextView(contexto).apply {
             text = paso.detalle
@@ -149,7 +149,7 @@ class TarjetaPensar(
         if (cantidadPasos > 0) partes.add(if (cantidadPasos == 1) "1 paso" else "$cantidadPasos pasos")
         titulo.text = if (partes.isEmpty()) "Nivel ${nivel.nombre}" else partes.joinToString(" · ")
         tiempo.text = nivel.nombre
-        tiempo.setTextColor(color)
+        tiempo.setTextColor(Colores.TEXTO_3)
         val completo = respuesta?.pensamiento?.trim().orEmpty().ifEmpty { textoPensado.toString().trim() }
         if (completo.isNotEmpty()) {
             razonamiento.visibility = View.VISIBLE
@@ -170,15 +170,15 @@ class TarjetaPensar(
     private fun segundos(milis: Long): String = String.format(Locale("es", "AR"), "%.1f s", milis / 1000f)
 
     private fun iconoDe(tipo: TipoPaso) = when (tipo) {
-        TipoPaso.HABILIDAD -> Trazos.calculadora() to Colores.MENTA
-        TipoPaso.BASE -> Trazos.libro() to Colores.LILA
-        TipoPaso.WEB -> Trazos.globo() to Colores.CELESTE
-        TipoPaso.LECTURA -> Trazos.ojo() to Colores.CIAN
-        TipoPaso.HERRAMIENTA -> Trazos.destello() to Colores.AMARILLO
-        TipoPaso.MOTOR -> Trazos.chip() to Colores.FUCSIA
-        TipoPaso.PRESUPUESTO -> Trazos.reloj() to Colores.NARANJA
-        TipoPaso.ADJUNTO -> Trazos.archivo() to Colores.INDIGO
-        TipoPaso.AVISO -> Trazos.advertencia() to Colores.CORAL
+        TipoPaso.HABILIDAD -> Trazos.calculadora() to Colores.TEXTO_3
+        TipoPaso.BASE -> Trazos.libro() to Colores.TEXTO_3
+        TipoPaso.WEB -> Trazos.globo() to Colores.TEXTO_3
+        TipoPaso.LECTURA -> Trazos.ojo() to Colores.TEXTO_3
+        TipoPaso.HERRAMIENTA -> Trazos.destello() to Colores.TEXTO_3
+        TipoPaso.MOTOR -> Trazos.chip() to Colores.TEXTO_3
+        TipoPaso.PRESUPUESTO -> Trazos.reloj() to Colores.AVISO
+        TipoPaso.ADJUNTO -> Trazos.archivo() to Colores.TEXTO_3
+        TipoPaso.AVISO -> Trazos.advertencia() to Colores.PELIGRO
     }
 }
 
@@ -189,18 +189,13 @@ class VistaRespuesta(
     private val alCopiar: (String) -> Unit,
 ) {
     val vista = LinearLayout(contexto).apply { orientation = LinearLayout.VERTICAL }
+    // La respuesta va sin caja, directo sobre el fondo, alineada con la cabecera.
     private val tarjetaTexto = LinearLayout(contexto).apply {
         orientation = LinearLayout.VERTICAL
-        background = redondeado(
-            Colores.alfa(Colores.SUPERFICIE, 0.78f), 0f, Colores.alfa(Colores.BORDE, 0.8f), contexto.dp(1f),
-            esquinas(contexto.dp(22f).toFloat(), contexto.dp(22f).toFloat(), contexto.dp(22f).toFloat()).also {
-                it[0] = contexto.dp(6f).toFloat(); it[1] = contexto.dp(6f).toFloat()
-            },
-        )
-        setPadding(contexto.dp(15f), contexto.dp(12f), contexto.dp(15f), contexto.dp(13f))
+        setPadding(contexto.dp(2f), 0, contexto.dp(2f), 0)
     }
     val cuerpo = TextView(contexto).apply {
-        estilo(15.5f, Colores.TEXTO, Peso.NORMAL, 1.45f)
+        estilo(15.5f, Colores.TEXTO, Peso.NORMAL, 1.5f)
         setTextIsSelectable(false)
         setOnLongClickListener {
             alCopiar(text.toString())
@@ -219,14 +214,17 @@ class VistaRespuesta(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        cabecera.addView(contexto.avatarRama(24f), lp(contexto.dp(24f), contexto.dp(24f)) { rightMargin = contexto.dp(8f) })
+        cabecera.addView(contexto.avatarRama(22f), lp(contexto.dp(22f), contexto.dp(22f)) { rightMargin = contexto.dp(8f) })
         cabecera.addView(TextView(contexto).apply {
             text = "Rama"
-            estilo(13.5f, Colores.TEXTO, Peso.EXTRA, 1f)
+            estilo(13.5f, Colores.TEXTO, Peso.NEGRITA, 1f)
         })
         if (nivel != null) {
             val (trazo, relleno) = Trazos.nivel(nivel)
-            cabecera.addView(contexto.pastilla(nivel.nombre, Colores.principalDeNivel(nivel), trazo, relleno), lp(WRAP, WRAP) { leftMargin = contexto.dp(8f) })
+            cabecera.addView(TextView(contexto).apply {
+                text = "· " + nivel.nombre
+                estilo(12.5f, Colores.TEXTO_3, Peso.MEDIO, 1f)
+            }, lp(WRAP, WRAP) { leftMargin = contexto.dp(6f) })
         }
         vista.addView(cabecera, lp(WRAP, WRAP) { bottomMargin = contexto.dp(8f) })
         tarjetaTexto.addView(cuerpo)
@@ -266,10 +264,10 @@ class VistaRespuesta(
             gravity = Gravity.CENTER_VERTICAL
         }
         val color = when (respaldo) {
-            Respaldo.CALCULO -> Colores.MENTA
-            Respaldo.WEB -> Colores.CELESTE
-            Respaldo.BASE -> Colores.LILA
-            Respaldo.SOLO_MODELO -> Colores.NARANJA
+            Respaldo.CALCULO -> Colores.TEXTO_3
+            Respaldo.WEB -> Colores.TEXTO_3
+            Respaldo.BASE -> Colores.TEXTO_3
+            Respaldo.SOLO_MODELO -> Colores.AVISO
         }
         val trazo = when (respaldo) {
             Respaldo.CALCULO -> Trazos.calculadora()
@@ -297,12 +295,11 @@ class VistaRespuesta(
             clipToPadding = false
         }
         val fila = LinearLayout(contexto).apply { orientation = LinearLayout.HORIZONTAL }
-        val tonos = intArrayOf(Colores.CELESTE, Colores.FUCSIA, Colores.MENTA, Colores.NARANJA, Colores.LILA, Colores.CIAN, Colores.CORAL, Colores.AMARILLO)
+        val tono = Colores.TEXTO_2
         fuentes.forEachIndexed { i, fuente ->
-            val tono = tonos[i % tonos.size]
             val ficha = LinearLayout(contexto).apply {
                 orientation = LinearLayout.VERTICAL
-                background = pulsable(Colores.alfa(Colores.SUPERFICIE, 0.9f), contexto.dp(14f).toFloat(), Colores.alfa(tono, 0.45f), contexto.dp(1f))
+                background = pulsable(Colores.SUPERFICIE, contexto.dp(12f).toFloat(), Colores.BORDE_TENUE, contexto.dp(1f))
                 setPadding(contexto.dp(11f), contexto.dp(9f), contexto.dp(11f), contexto.dp(9f))
                 setOnClickListener { alAbrir(fuente.url) }
             }
@@ -312,13 +309,13 @@ class VistaRespuesta(
             }
             arriba.addView(TextView(contexto).apply {
                 text = (i + 1).toString()
-                estilo(11f, Colores.FONDO, Peso.EXTRA, 1f)
+                estilo(11f, Colores.TEXTO_2, Peso.NEGRITA, 1f)
                 gravity = Gravity.CENTER
-                background = redondeado(tono, contexto.dp(9f).toFloat())
+                background = redondeado(Colores.SUPERFICIE_ALTA, contexto.dp(9f).toFloat())
             }, lp(contexto.dp(18f), contexto.dp(18f)) { rightMargin = contexto.dp(7f) })
             arriba.addView(TextView(contexto).apply {
                 text = ar.rama.ai.motor.Html.dominio(fuente.url)
-                estilo(11.5f, tono, Peso.NEGRITA, 1f)
+                estilo(11.5f, tono, Peso.MEDIO, 1f)
                 setSingleLine()
                 ellipsize = TextUtils.TruncateAt.END
             })

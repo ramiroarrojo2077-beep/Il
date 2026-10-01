@@ -6,7 +6,7 @@
         <item name="android:textColorHighlight">@color/seleccion</item>
         <item name="android:colorAccent">@color/acento</item>
         <item name="android:colorControlActivated">@color/acento</item>
-        <item name="android:colorPrimary">@color/violeta</item>
+        <item name="android:colorPrimary">@color/acento</item>
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
         <item name="android:statusBarColor">@color/fondo</item>
         <item name="android:navigationBarColor">@color/fondo</item>

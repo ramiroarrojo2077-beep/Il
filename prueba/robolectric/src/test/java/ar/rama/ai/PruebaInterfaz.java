@@ -139,7 +139,7 @@ public class PruebaInterfaz {
         // Pantalla del modelo.
         buscarDescripcion(raiz, "Modelo Rama").performClick();
         esperar(5);
-        assertNotNull("no se ve la pantalla del modelo", buscarTexto(raiz, "Tu modelo de IA de código abierto"));
+        assertNotNull("no se ve la pantalla del modelo", buscarTexto(raiz, "Modelo de IA de código abierto"));
         assertNotNull(buscarTexto(raiz, "Rama Liviana"));
         assertNotNull(buscarTexto(raiz, "Rama Completa"));
         assertNotNull(buscarTexto(raiz, "Rama Ultra"));
@@ -217,6 +217,95 @@ public class PruebaInterfaz {
         capturar(a, "9-respuesta");
         assertTrue("el prompt no abrió <think>", simulado.prompts.get(0).endsWith("<think>\n"));
         control.pause().stop().destroy();
+    }
+
+    /**
+     * Con la app en segundo plano la respuesta sigue: arranca el servicio en
+     * primer plano y, al terminar, avisa con una notificación que se borra al volver.
+     */
+    @Test
+    public void sigueRespondiendoEnSegundoPlano() throws Exception {
+        android.app.Application app = org.robolectric.RuntimeEnvironment.getApplication();
+        shadowOf(app).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS);
+        ActivityController<MainActivity> control = Robolectric.buildActivity(MainActivity.class).setup();
+        MainActivity a = control.get();
+        esperar(40);
+        View raiz = a.getWindow().getDecorView();
+
+        java.lang.reflect.Field campo = MainActivity.class.getDeclaredField("asistente");
+        campo.setAccessible(true);
+        ar.rama.ai.motor.Asistente asistente = (ar.rama.ai.motor.Asistente) campo.get(a);
+        assertNotNull("el asistente no cargó", asistente);
+        java.util.concurrent.CountDownLatch mitad = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch seguir = new java.util.concurrent.CountDownLatch(1);
+        asistente.setMotor(new ModeloSimulado(mitad, seguir));
+
+        buscarTexto(raiz, "Normal").performClick();
+        esperar(3);
+        entrada(raiz).setText("¿Por qué el cielo es azul?");
+        buscarDescripcion(raiz, "Enviar").performClick();
+        assertTrue("el modelo simulado no arrancó", mitad.await(20, java.util.concurrent.TimeUnit.SECONDS));
+        esperar(3);
+        android.content.Intent servicio = shadowOf(app).getNextStartedService();
+        assertNotNull("no arrancó el servicio en primer plano", servicio);
+        assertTrue(servicio.getComponent().getClassName().endsWith("ServicioRama"));
+        // Robolectric no arranca el servicio solo: se lo hace correr con el mismo pedido.
+        org.robolectric.android.controller.ServiceController<ServicioRama> controlServicio =
+            Robolectric.buildService(ServicioRama.class, servicio).create().startCommand(0, 1);
+        ServicioRama corriendo = controlServicio.get();
+        android.app.Notification progreso = shadowOf(corriendo).getLastForegroundNotification();
+        assertNotNull("el servicio no pasó a primer plano", progreso);
+        String enCurso = String.valueOf(progreso.extras.getCharSequence(android.app.Notification.EXTRA_TITLE));
+        assertTrue(enCurso, enCurso.equals("Respondiendo: ¿Por qué el cielo es azul?"));
+
+        // La app pasa a segundo plano y el modelo termina de escribir.
+        control.pause().stop();
+        seguir.countDown();
+        esperar(40);
+        assertNotNull("no llegó la respuesta", buscarTexto(raiz, "dispersión de Rayleigh"));
+        android.content.Intent parado = shadowOf(app).getNextStoppedService();
+        assertNotNull("el servicio no se apagó al terminar", parado);
+        assertTrue(!ServicioRama.Companion.getEnMarcha());
+        controlServicio.destroy();
+        android.app.NotificationManager gestor = (android.app.NotificationManager) app.getSystemService(android.content.Context.NOTIFICATION_SERVICE);
+        android.app.Notification aviso = shadowOf(gestor).getNotification(Avisos.ID_LISTA);
+        assertNotNull("no avisó que la respuesta estaba lista", aviso);
+        String titulo = String.valueOf(aviso.extras.getCharSequence(android.app.Notification.EXTRA_TITLE));
+        String texto = String.valueOf(aviso.extras.getCharSequence(android.app.Notification.EXTRA_BIG_TEXT));
+        assertTrue(titulo, titulo.startsWith("Rama respondió"));
+        assertTrue(texto, texto.startsWith("El cielo es azul por la dispersión de Rayleigh"));
+        assertTrue("quedaron marcas de Markdown: " + texto, !texto.contains("**") && !texto.contains("`"));
+
+        // Al volver a la app, la notificación se borra.
+        control.start().resume();
+        esperar(3);
+        org.junit.Assert.assertNull("la notificación siguió después de volver", shadowOf(gestor).getNotification(Avisos.ID_LISTA));
+        control.pause().stop().destroy();
+    }
+
+    /** Una respuesta instantánea no debe parar el servicio antes de que llegue a primer plano. */
+    @Test
+    public void unaRespuestaInstantaneaNoCortaElServicioAntesDeTiempo() {
+        android.app.Application app = org.robolectric.RuntimeEnvironment.getApplication();
+        ServicioRama.Companion.empezar(app, "¿Cuánto es 2 + 2?");
+        android.content.Intent pedido = shadowOf(app).getNextStartedService();
+        assertNotNull(pedido);
+        ServicioRama.Companion.terminar(app);
+        org.junit.Assert.assertNull("se paró antes de llamar a startForeground", shadowOf(app).getNextStoppedService());
+        org.robolectric.android.controller.ServiceController<ServicioRama> control =
+            Robolectric.buildService(ServicioRama.class, pedido).create().startCommand(0, 1);
+        assertNotNull("tiene que llegar a primer plano igual", shadowOf(control.get()).getLastForegroundNotification());
+        assertTrue("y apagarse solo enseguida", shadowOf(control.get()).isStoppedBySelf());
+        control.destroy();
+    }
+
+    @Test
+    public void elTextoDeLaNotificacionVaSinMarkdown() {
+        org.junit.Assert.assertEquals(
+            "Título\n\nUn dato importante, según la fuente.\n· primero\n· segundo\ncódigo",
+            Avisos.INSTANCE.textoPlano("## Título\n\nUn **dato** importante [1], según [la fuente](https://a.b).\n- primero\n* segundo\n```kotlin\ncódigo```"));
+        org.junit.Assert.assertEquals("hola mundo", Avisos.INSTANCE.recortar("  hola\n  mundo ", 20));
+        org.junit.Assert.assertEquals("abcd…", Avisos.INSTANCE.recortar("abcdefghij", 5));
     }
 
     /** Un modelo que piensa unos tokens, espera a que la prueba capture, y responde. */

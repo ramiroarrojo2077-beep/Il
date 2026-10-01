@@ -58,7 +58,7 @@ class DescargaEnSegundoPlano(private val contexto: Context) {
                 .setDestinationInExternalFilesDir(contexto, CARPETA, edicion.archivoLocal)
                 .setAllowedOverMetered(true)
                 .setAllowedOverRoaming(true)
-                .addRequestHeader("User-Agent", "RamaAI/4.0")
+                .addRequestHeader("User-Agent", "RamaAI/4.1")
             val id = administrador.enqueue(pedido)
             preferencias.edit().putLong(edicion.id, id).apply()
             true

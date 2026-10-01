@@ -5,7 +5,7 @@ import java.util.Calendar
 /** Quién es Rama: el mensaje de sistema y las instrucciones por nivel. */
 object Identidad {
     const val NOMBRE = "Rama"
-    const val VERSION = "4.0"
+    const val VERSION = "4.1"
 
     private val DIAS = arrayOf("domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado")
     private val MESES = arrayOf(

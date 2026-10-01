@@ -32,7 +32,7 @@ fun Context.botonIcono(
     tamanioIcono: Float = 20f,
     color: Int = Colores.TEXTO_2,
     fondo: Int = Colores.SUPERFICIE,
-    borde: Int = Colores.BORDE,
+    borde: Int = Colores.BORDE_TENUE,
     relleno: Boolean = false,
     alTocar: () -> Unit,
 ): ImageView = ImageView(this).apply {
@@ -45,10 +45,10 @@ fun Context.botonIcono(
     layoutParams = LinearLayout.LayoutParams(dp(lado), dp(lado))
 }
 
-/** Botón de texto. Con [colores] va relleno con ese degradé; si no, es un botón sobrio. */
+/** Botón de texto. Con [tono] va relleno de ese color (acción principal); si no, es sobrio. */
 fun Context.boton(
     texto: String,
-    colores: IntArray? = null,
+    tono: Int? = null,
     trazo: Path? = null,
     iconoRelleno: Boolean = false,
     alTocar: () -> Unit,
@@ -56,9 +56,9 @@ fun Context.boton(
     this.text = texto
     estilo(14.5f, Colores.TEXTO, Peso.NEGRITA, 1f)
     gravity = Gravity.CENTER
-    relleno(dp(18f), dp(12f))
-    val radio = dp(16f).toFloat()
-    background = if (colores != null) pulsable(degradado(colores, radio, GradientDrawable.Orientation.LEFT_RIGHT), radio)
+    relleno(dp(16f), dp(12f))
+    val radio = dp(12f).toFloat()
+    background = if (tono != null) pulsable(tono, radio)
     else pulsable(Colores.SUPERFICIE_ALTA, radio, Colores.BORDE, dp(1f))
     if (trazo != null) {
         val icono = Icono(trazo, Colores.TEXTO, 2.2f, iconoRelleno)
@@ -72,16 +72,16 @@ fun Context.boton(
 /** Etiqueta en mayúsculas, chiquita y espaciada. */
 fun Context.rotulo(texto: String, color: Int = Colores.TEXTO_3): TextView = TextView(this).apply {
     this.text = texto.uppercase()
-    estilo(11f, color, Peso.EXTRA, 1f)
-    letterSpacing = 0.12f
+    estilo(11f, color, Peso.NEGRITA, 1f)
+    letterSpacing = 0.08f
 }
 
 /** Pastilla de color con texto: estados, sellos, capacidades. */
 fun Context.pastilla(texto: String, color: Int, trazo: Path? = null, rellenoIcono: Boolean = false): TextView = TextView(this).apply {
     this.text = texto
-    estilo(11.5f, color, Peso.NEGRITA, 1f)
-    relleno(dp(10f), dp(5f))
-    background = redondeado(Colores.alfa(color, 0.14f), dp(999f).toFloat(), Colores.alfa(color, 0.45f), dp(1f))
+    estilo(11.5f, color, Peso.MEDIO, 1f)
+    relleno(dp(8f), dp(4f))
+    background = redondeado(Colores.alfa(color, 0.10f), dp(6f).toFloat(), Colores.alfa(color, 0.28f), dp(1f))
     if (trazo != null) {
         val icono = Icono(trazo, color, 2.3f, rellenoIcono)
         icono.setBounds(0, 0, dp(12f), dp(12f))
@@ -90,9 +90,12 @@ fun Context.pastilla(texto: String, color: Int, trazo: Path? = null, rellenoIcon
     }
 }
 
-/** El avatar de Rama: círculo con el degradé de la marca y la rama en blanco. */
+/** El avatar de Rama: círculo del color de acento con la rama en blanco. */
 fun Context.avatarRama(lado: Float): View = FrameLayout(this).apply {
-    background = GradientDrawable(GradientDrawable.Orientation.TL_BR, Colores.MARCA).apply { shape = GradientDrawable.OVAL }
+    background = GradientDrawable().apply {
+        shape = GradientDrawable.OVAL
+        setColor(Colores.ACENTO)
+    }
     val margen = dp(lado * 0.2f)
     addView(ImageView(context).apply { setImageDrawable(Icono(Trazos.rama(), Colores.TEXTO, 2.4f)) }, FrameLayout.LayoutParams(-1, -1).apply {
         setMargins(margen, margen, margen, margen)
@@ -117,7 +120,7 @@ const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
 // ---------------------------------------------------------------- vistas animadas
 
 /** Tres puntos que laten con los colores de la marca mientras Rama prepara la respuesta. */
-class PuntosPensando(contexto: Context, private val colores: IntArray = Colores.MARCA) : View(contexto) {
+class PuntosPensando(contexto: Context, private val colores: IntArray = intArrayOf(Colores.TEXTO_2)) : View(contexto) {
     private val pincel = Paint(Paint.ANTI_ALIAS_FLAG)
     private var fase = 0f
     private val animador = ValueAnimator.ofFloat(0f, 1f).apply {
@@ -154,7 +157,7 @@ class PuntosPensando(contexto: Context, private val colores: IntArray = Colores.
 }
 
 /** Barra de progreso redondeada con relleno degradé. */
-class BarraProgreso(contexto: Context, private val colores: IntArray = Colores.MARCA) : View(contexto) {
+class BarraProgreso(contexto: Context, private val colores: IntArray = intArrayOf(Colores.ACENTO, Colores.ACENTO)) : View(contexto) {
     private val fondo = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Colores.SUPERFICIE_ALTA }
     private val relleno = Paint(Paint.ANTI_ALIAS_FLAG)
     private val caja = RectF()
@@ -201,58 +204,50 @@ class BarraProgreso(contexto: Context, private val colores: IntArray = Colores.M
 }
 
 /**
- * Los cuatro niveles de pensamiento en una fila de pastillas. La elegida va
- * rellena con el degradé de su nivel; las otras, en su color sobre oscuro.
+ * Los cuatro niveles de pensamiento como un control segmentado: un solo
+ * contenedor sobrio y el nivel elegido resaltado.
  */
 class SelectorNivel(contexto: Context, private val alElegir: (NivelPensar) -> Unit) : LinearLayout(contexto) {
-    private val pastillas = LinkedHashMap<NivelPensar, TextView>()
+    private val segmentos = LinkedHashMap<NivelPensar, TextView>()
     var nivel: NivelPensar = NivelPensar.PREDETERMINADO
         private set
 
     init {
         orientation = HORIZONTAL
+        background = redondeado(Colores.SUPERFICIE, dp(12f).toFloat(), Colores.BORDE_TENUE, dp(1f))
+        setPadding(dp(3f), dp(3f), dp(3f), dp(3f))
         for (n in NivelPensar.entries) {
             val vista = TextView(contexto).apply {
                 text = n.nombre
                 gravity = Gravity.CENTER
                 setSingleLine()
                 ellipsize = TextUtils.TruncateAt.END
-                relleno(dp(6f), dp(9f))
+                relleno(dp(6f), dp(8f))
                 contentDescription = "Pensar ${n.nombre}: ${n.descripcion}"
                 setOnClickListener { elegir(n, true) }
             }
-            pastillas[n] = vista
-            addView(vista, lp(0, WRAP, 1f) { if (n != NivelPensar.MAX) rightMargin = dp(7f) })
+            segmentos[n] = vista
+            addView(vista, lp(0, WRAP, 1f))
         }
         pintar()
     }
 
     fun elegir(n: NivelPensar, avisar: Boolean) {
-        val cambio = n != nivel
         nivel = n
         pintar()
-        if (avisar && cambio) {
-            pastillas[n]?.let { rebote(it) }
-            alElegir(n)
-        } else if (avisar) {
-            alElegir(n)
-        }
+        if (avisar) alElegir(n)
     }
 
     private fun pintar() {
-        for ((n, vista) in pastillas) {
+        for ((n, vista) in segmentos) {
             val elegido = n == nivel
-            val color = Colores.principalDeNivel(n)
-            val radio = dp(999f).toFloat()
-            vista.estilo(13f, if (elegido) Colores.FONDO else color, if (elegido) Peso.EXTRA else Peso.NEGRITA, 1f)
-            vista.background = if (elegido) {
-                pulsable(degradado(Colores.deNivel(n), radio, GradientDrawable.Orientation.LEFT_RIGHT), radio)
-            } else {
-                pulsable(Colores.alfa(color, 0.10f), radio, Colores.alfa(color, 0.40f), dp(1f))
-            }
+            val radio = dp(9f).toFloat()
+            vista.estilo(13f, if (elegido) Colores.TEXTO else Colores.TEXTO_3, if (elegido) Peso.NEGRITA else Peso.MEDIO, 1f)
+            vista.background = if (elegido) pulsable(Colores.SUPERFICIE_ALTA, radio, Colores.BORDE, dp(1f))
+            else pulsable(Colores.SUPERFICIE, radio)
             val (trazo, relleno) = Trazos.nivel(n)
-            val icono = Icono(trazo, if (elegido) Colores.FONDO else color, 2.2f, relleno)
-            icono.setBounds(0, 0, dp(14f), dp(14f))
+            val icono = Icono(trazo, if (elegido) Colores.ACENTO_CLARO else Colores.TEXTO_3, 2f, relleno)
+            icono.setBounds(0, 0, dp(13f), dp(13f))
             vista.setCompoundDrawables(icono, null, null, null)
             vista.compoundDrawablePadding = dp(5f)
         }
@@ -288,7 +283,7 @@ class HojaInferior(private val raiz: FrameLayout) {
         }
         val tarjeta = LinearLayout(contexto).apply {
             orientation = LinearLayout.VERTICAL
-            background = bordeDegradado(Colores.MARCA, Colores.SUPERFICIE, dp(26f).toFloat(), dp(1.5f))
+            background = redondeado(Colores.SUPERFICIE, dp(20f).toFloat(), Colores.BORDE, dp(1f))
             setPadding(dp(20f), dp(12f), dp(20f), dp(20f))
             isClickable = true
             elevation = dp(12f).toFloat()
@@ -298,7 +293,7 @@ class HojaInferior(private val raiz: FrameLayout) {
         }, lp(dp(40f), dp(5f)) { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = dp(14f) })
         tarjeta.addView(TextView(contexto).apply {
             text = titulo
-            estilo(19f, Colores.TEXTO, Peso.EXTRA, 1.1f)
+            estilo(19f, Colores.TEXTO, Peso.NEGRITA, 1.1f)
         }, lp(MATCH, WRAP) { bottomMargin = dp(12f) })
         val desplazable = ScrollView(contexto).apply {
             isVerticalScrollBarEnabled = false

@@ -31,23 +31,24 @@ enum class NivelPensar(
     NORMAL(
         "normal", "Normal",
         "Piensa un momento antes de contestar. El equilibrio entre velocidad y calidad.",
-        400, 1.25f, 5, 1, 900,
+        256, 1.2f, 5, 0, 0,
     ),
     ALTO(
         "alto", "Alto",
-        "Razona a fondo y lee las páginas que encuentra antes de responder.",
-        1200, 1.5f, 6, 2, 1100,
+        "Razona con cuidado y lee la mejor página que encuentra antes de responder.",
+        768, 1.4f, 6, 1, 900,
     ),
     MAX(
         "max", "Max",
-        "Todo el razonamiento que entra en memoria: lee más fuentes y revisa su propia respuesta.",
-        4096, 2.0f, 8, 3, 1400,
+        "Razona a fondo, lee más fuentes y revisa su propia respuesta. Es el más lento.",
+        2048, 1.8f, 8, 2, 1100,
     );
 
     val piensa: Boolean get() = presupuesto > 0
 
     companion object {
-        val PREDETERMINADO = NORMAL
+        /** Bajo: la respuesta empieza a salir enseguida. */
+        val PREDETERMINADO = BAJO
 
         fun porId(id: String?): NivelPensar = entries.firstOrNull { it.id == id } ?: PREDETERMINADO
     }

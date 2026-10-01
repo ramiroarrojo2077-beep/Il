@@ -51,6 +51,21 @@ class Asistente(val rama: Rama, private val buscador: Buscador = Buscador()) {
         motor?.cancelar()
     }
 
+    /**
+     * Procesa de antemano el mensaje de sistema, que es igual en todos los
+     * turnos: el motor lo deja en su caché y la primera pregunta arranca sin
+     * tener que leerlo. Conviene llamarlo apenas se carga el modelo.
+     */
+    fun precalentar(estilo: Estilo) {
+        val m = motor ?: return
+        if (!m.esChatML) return
+        val prefijo = "<|im_start|>system\n" + Identidad.sistema(estilo) + "<|im_end|>\n"
+        try {
+            m.generar(prefijo, 1, 0.7f, 0.8f, 20) { false }
+        } catch (e: Throwable) {
+        }
+    }
+
     fun responder(
         pregunta: String,
         historial: List<Mensaje>,
@@ -108,42 +123,45 @@ class Asistente(val rama: Rama, private val buscador: Buscador = Buscador()) {
         if (motivo != null && sigue()) {
             val consulta = consultaDeBusqueda(pregunta, historial)
             paso(TipoPaso.WEB, "Búsqueda web", "$motivo — busco «$consulta»")
+            // Todo sale a la vez: herramientas, noticias, buscadores y Wikipedia.
+            val lugar = if (CLIMA.containsMatchIn(plano)) lugarDelClima(plano) else null
+            val enDolar = if (DOLAR.containsMatchIn(plano)) buscador.lanzar { buscador.dolar() } else null
+            val enClima = if (lugar != null) buscador.lanzar { buscador.clima(lugar) } else null
+            val enNoticias = if (NOTICIAS.containsMatchIn(plano)) buscador.lanzar { buscador.noticias(consulta, 5) } else null
+            val enWeb = buscador.lanzar { buscador.web(consulta, nivel.resultadosWeb) }
+            val conWiki = esFactual(plano) || nivel >= NivelPensar.ALTO
+            val enWiki = if (conWiki) buscador.lanzar { buscador.wikipedia(consulta) } else null
+            fun <T> esperar(f: java.util.concurrent.Future<T>?): T? = try {
+                f?.get(ESPERA_RED, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (e: Exception) {
+                f?.cancel(true)
+                null
+            }
+
             var herramientaResolvio = false
-            if (DOLAR.containsMatchIn(plano)) {
-                buscador.dolar()?.let {
-                    fuentes.add(it)
-                    herramientaResolvio = true
-                    paso(TipoPaso.HERRAMIENTA, "Cotizaciones", "traje las cotizaciones actuales del dólar")
-                }
+            esperar(enDolar)?.let {
+                fuentes.add(it)
+                herramientaResolvio = true
+                paso(TipoPaso.HERRAMIENTA, "Cotizaciones", "traje las cotizaciones actuales del dólar")
             }
-            if (CLIMA.containsMatchIn(plano)) {
-                val lugar = lugarDelClima(plano)
-                if (lugar != null) {
-                    buscador.clima(lugar)?.let {
-                        fuentes.add(it)
-                        herramientaResolvio = true
-                        paso(TipoPaso.HERRAMIENTA, "Clima", "pronóstico de Open-Meteo para «$lugar»")
-                    }
-                }
+            esperar(enClima)?.let {
+                fuentes.add(it)
+                herramientaResolvio = true
+                paso(TipoPaso.HERRAMIENTA, "Clima", "pronóstico de Open-Meteo para «$lugar»")
             }
-            if (NOTICIAS.containsMatchIn(plano) && sigue()) {
-                val titulares = buscador.noticias(consulta, 5)
-                if (titulares.isNotEmpty()) {
-                    fuentes.addAll(titulares)
-                    paso(TipoPaso.WEB, "Noticias", "${titulares.size} titulares recientes de Google Noticias")
-                }
+            esperar(enNoticias)?.takeIf { it.isNotEmpty() }?.let { titulares ->
+                fuentes.addAll(titulares)
+                paso(TipoPaso.WEB, "Noticias", "${titulares.size} titulares recientes de Google Noticias")
             }
-            var web: List<Resultado> = emptyList()
-            if (sigue()) {
-                val cuantos = if (herramientaResolvio) 3 else nivel.resultadosWeb
-                web = buscador.web(consulta, cuantos)
-                fuentes.addAll(web)
-            }
-            if (sigue() && !herramientaResolvio && (esFactual(plano) || nivel >= NivelPensar.ALTO)) {
-                buscador.wikipedia(consulta)?.let { wiki ->
+            val web = (esperar(enWeb) ?: emptyList()).let { if (herramientaResolvio) it.take(3) else it }
+            fuentes.addAll(web)
+            if (!herramientaResolvio) {
+                esperar(enWiki)?.let { wiki ->
                     if (fuentes.none { it.url == wiki.url }) fuentes.add(0, wiki)
                     paso(TipoPaso.WEB, "Wikipedia", wiki.titulo)
                 }
+            } else {
+                enWiki?.cancel(true)
             }
             if (fuentes.isEmpty()) {
                 paso(TipoPaso.AVISO, "Sin resultados", "la web no respondió (¿hay conexión?)")
@@ -171,8 +189,16 @@ class Asistente(val rama: Rama, private val buscador: Buscador = Buscador()) {
             else -> Respaldo.SOLO_MODELO
         }
 
-        // 6. Sin modelo: lo mejor que se puede sin redactar.
+        // 6. Sin modelo (o con un dato exacto en niveles rápidos): se responde sin redactar.
         val m = motor
+        val directo = dato != null && !usaAdjunto && nivel <= NivelPensar.NORMAL && fuentesUnicas.isEmpty()
+        if (directo && m != null && sigue()) {
+            val exacto = dato!!
+            paso(TipoPaso.HABILIDAD, "Respuesta directa", "el dato exacto alcanza: no hace falta que el modelo lo redacte")
+            oyente.texto(exacto)
+            rama.memoria.registrarTurno("rama", exacto)
+            return RespuestaRama(exacto, "", emptyList(), Respaldo.CALCULO, pasos, 0, 0, false, false)
+        }
         if (m == null || !sigue()) {
             val texto = when {
                 !sigue() -> "(detenido)"
@@ -490,6 +516,8 @@ class Asistente(val rama: Rama, private val buscador: Buscador = Buscador()) {
 
     companion object {
         const val MAX_HISTORIAL = 8
+        /** Cuánto se espera a cada consulta de red que salió en paralelo (segundos). */
+        const val ESPERA_RED = 9L
         /** En modo ahorro de RAM cada token tarda más: se piensa y se escribe menos. */
         const val PRESUPUESTO_AHORRO = 256
         const val MAX_RESPUESTA_AHORRO = 450

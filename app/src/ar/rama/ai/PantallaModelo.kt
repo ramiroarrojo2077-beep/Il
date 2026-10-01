@@ -3,7 +3,6 @@ package ar.rama.ai
 import android.app.Activity
 import android.app.ActivityManager
 import android.content.Context
-import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
@@ -93,7 +92,7 @@ class PantallaModelo(
     private fun construir(): View {
         val capa = LinearLayout(actividad).apply {
             orientation = LinearLayout.VERTICAL
-            background = FondoAurora(0.9f)
+            setBackgroundColor(Colores.FONDO)
             visibility = View.GONE
             isClickable = true
         }
@@ -105,8 +104,7 @@ class PantallaModelo(
         cabecera.addView(actividad.botonIcono(Trazos.atras(), "Volver", alTocar = { ocultar() }))
         cabecera.addView(TextView(actividad).apply {
             text = "Modelo Rama"
-            estilo(22f, Colores.TEXTO, Peso.EXTRA, 1f)
-            textoDegradado(Colores.MARCA)
+            estilo(20f, Colores.TEXTO, Peso.NEGRITA, 1f)
         }, lp(0, WRAP, 1f) { leftMargin = dp(12f) })
         capa.addView(cabecera)
         val desplazable = ScrollView(actividad).apply {
@@ -145,7 +143,7 @@ class PantallaModelo(
             tarjetas.addView(aviso(
                 "Este teléfono no puede correr el modelo",
                 (Llama.motivoNoDisponible ?: "No se pudo cargar el motor.") + "\n\nRama sigue funcionando con sus habilidades exactas, su base propia y la búsqueda web.",
-                Colores.ERROR,
+                Colores.PELIGRO,
             ), lp(MATCH, WRAP) { bottomMargin = dp(14f) })
         }
         val recomendada = Catalogo.recomendada(ramDelTelefono)
@@ -162,7 +160,7 @@ class PantallaModelo(
         if (viejos.isNotEmpty()) tarjetas.addView(tarjetaHuerfanos(viejos), lp(MATCH, WRAP) { bottomMargin = dp(12f) })
         tarjetas.addView(TextView(actividad).apply {
             text = "Rama ${Identidad.VERSION} · modelo de código abierto construido sobre ${Catalogo.BASE} (${Catalogo.LICENCIA}). " +
-                "Motor: llama.cpp (MIT). Tipografía: Nunito (OFL). Todo corre en tu teléfono: las preguntas no salen del dispositivo, salvo las búsquedas web que vos permitís."
+                "Motor: llama.cpp (MIT). Tipografía: Inter (OFL). Todo corre en tu teléfono: las preguntas no salen del dispositivo, salvo las búsquedas web que vos permitís."
             estilo(11.5f, Colores.TEXTO_3, Peso.NORMAL, 1.4f)
             gravity = Gravity.CENTER
         }, lp(MATCH, WRAP) { topMargin = dp(6f) })
@@ -171,49 +169,46 @@ class PantallaModelo(
     private fun heroe(): View {
         val caja = LinearLayout(actividad).apply {
             orientation = LinearLayout.VERTICAL
-            background = degradado(intArrayOf(Colores.VIOLETA, Colores.FUCSIA, Colores.NARANJA), dp(26f).toFloat())
-            setPadding(dp(20f), dp(20f), dp(20f), dp(18f))
+            background = redondeado(Colores.SUPERFICIE, dp(16f).toFloat(), Colores.BORDE_TENUE, dp(1f))
+            setPadding(dp(18f), dp(18f), dp(18f), dp(16f))
         }
         val fila = LinearLayout(actividad).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
         val logo = FrameLayout(actividad).apply {
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Colores.alfa(Colores.FONDO, 0.28f))
-            }
-            addView(ImageView(actividad).apply { setImageDrawable(Icono(Trazos.rama(), Colores.TEXTO, 2.4f)) }, FrameLayout.LayoutParams(MATCH, MATCH).apply { setMargins(dp(11f), dp(11f), dp(11f), dp(11f)) })
-            addView(ImageView(actividad).apply { setImageDrawable(Icono(Trazos.ramaBrotes(), Colores.AMARILLO, 0f, true)) }, FrameLayout.LayoutParams(MATCH, MATCH).apply { setMargins(dp(11f), dp(11f), dp(11f), dp(11f)) })
+            background = redondeado(Colores.SUPERFICIE_ALTA, dp(12f).toFloat(), Colores.BORDE, dp(1f))
+            addView(ImageView(actividad).apply { setImageDrawable(Icono(Trazos.rama(), Colores.TEXTO, 2.4f)) }, FrameLayout.LayoutParams(MATCH, MATCH).apply { setMargins(dp(10f), dp(10f), dp(10f), dp(10f)) })
+            addView(ImageView(actividad).apply { setImageDrawable(Icono(Trazos.ramaBrotes(), Colores.ACENTO_CLARO, 0f, true)) }, FrameLayout.LayoutParams(MATCH, MATCH).apply { setMargins(dp(10f), dp(10f), dp(10f), dp(10f)) })
         }
-        fila.addView(logo, lp(dp(56f), dp(56f)) { rightMargin = dp(14f) })
+        fila.addView(logo, lp(dp(48f), dp(48f)) { rightMargin = dp(14f) })
         val textos = LinearLayout(actividad).apply { orientation = LinearLayout.VERTICAL }
         textos.addView(TextView(actividad).apply {
             text = "Rama"
-            estilo(30f, Colores.TEXTO, Peso.EXTRA, 1f)
+            estilo(22f, Colores.TEXTO, Peso.NEGRITA, 1f)
         })
         textos.addView(TextView(actividad).apply {
-            text = "Tu modelo de IA de código abierto"
-            estilo(14f, Colores.alfa(Colores.TEXTO, 0.9f), Peso.NEGRITA, 1.1f)
-        }, lp(WRAP, WRAP) { topMargin = dp(2f) })
+            text = "Modelo de IA de código abierto"
+            estilo(13f, Colores.TEXTO_2, Peso.MEDIO, 1.1f)
+        }, lp(WRAP, WRAP) { topMargin = dp(3f) })
         fila.addView(textos, lp(0, WRAP, 1f))
         caja.addView(fila)
         caja.addView(TextView(actividad).apply {
             text = "Un solo modelo que piensa dentro de tu teléfono, sale a buscar a la web cuando hace falta y te deja elegir cuánto razona antes de contestar."
-            estilo(13.5f, Colores.alfa(Colores.TEXTO, 0.92f), Peso.MEDIO, 1.4f)
+            estilo(13.5f, Colores.TEXTO_2, Peso.NORMAL, 1.4f)
         }, lp(MATCH, WRAP) { topMargin = dp(12f) })
         val capacidades = LinearLayout(actividad).apply { orientation = LinearLayout.HORIZONTAL }
-        for ((texto, trazo, lleno) in listOf(
-            Triple("Web", Trazos.globo(), false),
-            Triple("4 niveles", Trazos.destello(), true),
-            Triple("100% privado", Trazos.chip(), false),
+        for ((texto, trazo) in listOf(
+            "Búsqueda web" to Trazos.globo(),
+            "4 niveles" to Trazos.destello(),
+            "Privado" to Trazos.chip(),
         )) {
             capacidades.addView(TextView(actividad).apply {
                 text = texto
-                estilo(11.5f, Colores.TEXTO, Peso.EXTRA, 1f)
+                estilo(12f, Colores.TEXTO_2, Peso.MEDIO, 1f)
                 relleno(dp(9f), dp(6f))
-                background = redondeado(Colores.alfa(Colores.FONDO, 0.25f), dp(999f).toFloat())
-                val icono = Icono(trazo, Colores.TEXTO, 2.3f, lleno)
+                background = redondeado(Colores.SUPERFICIE_ALTA, dp(8f).toFloat(), Colores.BORDE_TENUE, dp(1f))
+                val icono = Icono(trazo, Colores.TEXTO_3, 2.2f)
                 icono.setBounds(0, 0, dp(12f), dp(12f))
                 setCompoundDrawables(icono, null, null, null)
                 compoundDrawablePadding = dp(5f)
@@ -231,16 +226,11 @@ class PantallaModelo(
         val archivo = descargas.archivoDe(edicion)
         val activo = modeloActivo()?.absolutePath == archivo.absolutePath
         val estado = descargas.estado(edicion)
-        val tono = when (edicion.id) {
-            Catalogo.ULTRA.id -> Colores.FUEGO
-            Catalogo.COMPLETA.id -> Colores.FUCSIA
-            else -> Colores.CIAN
-        }
-        val radio = dp(22f).toFloat()
+        val radio = dp(16f).toFloat()
         val caja = LinearLayout(actividad).apply {
             orientation = LinearLayout.VERTICAL
-            background = if (activo || recomendada) bordeDegradado(if (activo) Colores.MARCA else intArrayOf(tono, Colores.VIOLETA), Colores.alfa(Colores.SUPERFICIE, 0.95f), radio, dp(1.5f))
-            else redondeado(Colores.alfa(Colores.SUPERFICIE, 0.9f), radio, Colores.BORDE, dp(1f))
+            background = if (activo) redondeado(Colores.SUPERFICIE, radio, Colores.alfa(Colores.ACENTO, 0.7f), dp(1.5f))
+            else redondeado(Colores.SUPERFICIE, radio, if (recomendada) Colores.BORDE else Colores.BORDE_TENUE, dp(1f))
             setPadding(dp(16f), dp(16f), dp(16f), dp(16f))
         }
         val fila = LinearLayout(actividad).apply {
@@ -248,14 +238,14 @@ class PantallaModelo(
             gravity = Gravity.CENTER_VERTICAL
         }
         fila.addView(ImageView(actividad).apply {
-            setImageDrawable(Icono(Trazos.chip(), Colores.TEXTO, 1.9f))
-            setPadding(dp(9f), dp(9f), dp(9f), dp(9f))
-            background = degradado(intArrayOf(tono, Colores.VIOLETA), dp(14f).toFloat())
+            setImageDrawable(Icono(Trazos.chip(), if (activo || recomendada) Colores.ACENTO_CLARO else Colores.TEXTO_2, 1.9f))
+            setPadding(dp(10f), dp(10f), dp(10f), dp(10f))
+            background = redondeado(Colores.SUPERFICIE_ALTA, dp(10f).toFloat(), Colores.BORDE_TENUE, dp(1f))
         }, lp(dp(42f), dp(42f)) { rightMargin = dp(12f) })
         val textos = LinearLayout(actividad).apply { orientation = LinearLayout.VERTICAL }
         textos.addView(TextView(actividad).apply {
             text = edicion.nombre
-            estilo(17f, Colores.TEXTO, Peso.EXTRA, 1f)
+            estilo(16.5f, Colores.TEXTO, Peso.NEGRITA, 1f)
         })
         textos.addView(TextView(actividad).apply {
             text = "${edicion.parametros} parámetros · descarga ${peso(edicion.bytesAproximados)} · usa ~${edicion.memoriaTipica.totalLegible} de RAM"
@@ -272,12 +262,12 @@ class PantallaModelo(
                 plan != null -> "En uso · ${plan.contexto} tokens · ${plan.totalLegible}"
                 else -> "En uso"
             }
-            sellos.addView(actividad.pastilla(texto, Colores.MENTA, Trazos.visto()), lp(WRAP, WRAP) { rightMargin = dp(6f) })
+            sellos.addView(actividad.pastilla(texto, Colores.EXITO, Trazos.visto()), lp(WRAP, WRAP) { rightMargin = dp(6f) })
         }
-        if (recomendada) sellos.addView(actividad.pastilla("Recomendada para vos", Colores.AMARILLO, Trazos.destello(), true), lp(WRAP, WRAP) { rightMargin = dp(6f) })
-        if (edicion.id == Catalogo.ULTRA.id && !activo) sellos.addView(actividad.pastilla("La más potente", Colores.FUEGO, Trazos.fuego(), true), lp(WRAP, WRAP) { rightMargin = dp(6f) })
+        if (recomendada) sellos.addView(actividad.pastilla("Recomendada para vos", Colores.ACENTO_CLARO, Trazos.destello(), true), lp(WRAP, WRAP) { rightMargin = dp(6f) })
+        if (edicion.id == Catalogo.ULTRA.id && !activo) sellos.addView(actividad.pastilla("La más potente", Colores.TEXTO_2, Trazos.fuego(), true), lp(WRAP, WRAP) { rightMargin = dp(6f) })
         if (estado is EstadoDescarga.Terminada && archivo.exists()) {
-            cuantizacionDe(archivo)?.let { sellos.addView(actividad.pastilla(it, Colores.CELESTE), lp(WRAP, WRAP) { rightMargin = dp(6f) }) }
+            cuantizacionDe(archivo)?.let { sellos.addView(actividad.pastilla(it, Colores.TEXTO_2), lp(WRAP, WRAP) { rightMargin = dp(6f) }) }
         }
         if (sellos.childCount > 0) caja.addView(sellos, lp(MATCH, WRAP) { topMargin = dp(12f) })
         caja.addView(TextView(actividad).apply {
@@ -293,18 +283,18 @@ class PantallaModelo(
                     text = "Buscando el archivo en Hugging Face…"
                     estilo(12.5f, Colores.TEXTO_2, Peso.MEDIO, 1.2f)
                 })
-                acciones.addView(BarraProgreso(actividad, intArrayOf(tono, Colores.VIOLETA)).apply { indeterminada = true }, lp(MATCH, dp(8f)) { topMargin = dp(8f) })
+                acciones.addView(BarraProgreso(actividad).apply { indeterminada = true }, lp(MATCH, dp(6f)) { topMargin = dp(8f) })
             }
             estado is EstadoDescarga.EnCurso -> {
                 val texto = if (estado.totales > 0) String.format(Locale("es", "AR"), "%s de %s · %.0f%%", peso(estado.bajados), peso(estado.totales), estado.fraccion * 100)
                 else "Empezando… ${peso(estado.bajados)}"
                 acciones.addView(TextView(actividad).apply {
                     text = if (estado.enPausa) "$texto · en pausa (esperando red)" else texto
-                    estilo(12.5f, Colores.TEXTO_2, Peso.NEGRITA, 1.2f)
+                    estilo(12.5f, Colores.TEXTO_2, Peso.MEDIO, 1.2f)
                 })
-                acciones.addView(BarraProgreso(actividad, intArrayOf(tono, Colores.VIOLETA, Colores.FUCSIA)).apply {
+                acciones.addView(BarraProgreso(actividad).apply {
                     if (estado.totales > 0) fraccion = estado.fraccion else indeterminada = true
-                }, lp(MATCH, dp(10f)) { topMargin = dp(8f) })
+                }, lp(MATCH, dp(6f)) { topMargin = dp(8f) })
                 acciones.addView(actividad.boton("Cancelar descarga", trazo = Trazos.cerrar()) {
                     descargas.cancelar(edicion)
                     enCurso.remove(edicion.id)
@@ -318,7 +308,7 @@ class PantallaModelo(
                         refrescar()
                     }, lp(MATCH, WRAP))
                 } else {
-                    acciones.addView(actividad.boton("Usar ${edicion.nombre}", Colores.MARCA, Trazos.visto()) {
+                    acciones.addView(actividad.boton("Usar ${edicion.nombre}", Colores.ACENTO, Trazos.visto()) {
                         ocultar()
                         alUsar(archivo)
                     }, lp(MATCH, WRAP))
@@ -333,11 +323,11 @@ class PantallaModelo(
                 if (error != null) {
                     acciones.addView(TextView(actividad).apply {
                         text = "No se pudo bajar: $error"
-                        estilo(12.5f, Colores.ERROR, Peso.NEGRITA, 1.3f)
+                        estilo(12.5f, Colores.PELIGRO, Peso.MEDIO, 1.3f)
                     }, lp(MATCH, WRAP) { bottomMargin = dp(8f) })
                 }
-                if (edicion.variantes.isNotEmpty()) acciones.addView(selectorDeVariante(edicion, tono), lp(MATCH, WRAP) { bottomMargin = dp(12f) })
-                acciones.addView(actividad.boton(if (error != null) "Reintentar" else "Descargar ${edicion.nombre} (${peso(edicion.bytesAproximados)})", if (recomendada) Colores.MARCA else intArrayOf(tono, Colores.VIOLETA), Trazos.descargar()) {
+                if (edicion.variantes.isNotEmpty()) acciones.addView(selectorDeVariante(edicion), lp(MATCH, WRAP) { bottomMargin = dp(12f) })
+                acciones.addView(actividad.boton(if (error != null) "Reintentar" else "Descargar ${edicion.nombre} (${peso(edicion.bytesAproximados)})", if (recomendada) Colores.ACENTO else null, Trazos.descargar()) {
                     descargar(edicion)
                 }, lp(MATCH, WRAP))
             }
@@ -347,29 +337,29 @@ class PantallaModelo(
     }
 
     /** Dos pastillas para elegir cómo guardar los pesos (menos RAM o más precisión). */
-    private fun selectorDeVariante(edicion: Edicion, tono: Int): View {
+    private fun selectorDeVariante(edicion: Edicion): View {
         val caja = LinearLayout(actividad).apply { orientation = LinearLayout.VERTICAL }
         val elegida = descargas.variante(edicion, ramDelTelefono)
-        caja.addView(actividad.rotulo("Memoria", tono), lp(WRAP, WRAP) { bottomMargin = dp(8f) })
+        caja.addView(actividad.rotulo("Memoria"), lp(WRAP, WRAP) { bottomMargin = dp(8f) })
         val fila = LinearLayout(actividad).apply { orientation = LinearLayout.HORIZONTAL }
         edicion.variantes.forEachIndexed { i, v ->
             val sel = v.id == elegida?.id
-            val radio = dp(16f).toFloat()
+            val radio = dp(12f).toFloat()
             fila.addView(LinearLayout(actividad).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
                 setPadding(dp(10f), dp(9f), dp(10f), dp(9f))
-                background = if (sel) pulsable(bordeDegradado(intArrayOf(tono, Colores.VIOLETA), Colores.mezclar(Colores.SUPERFICIE_ALTA, tono, 0.14f), radio, dp(1.5f)), radio)
+                background = if (sel) pulsable(Colores.mezclar(Colores.SUPERFICIE_ALTA, Colores.ACENTO, 0.10f), radio, Colores.ACENTO, dp(1.5f))
                 else pulsable(Colores.SUPERFICIE_ALTA, radio, Colores.BORDE, dp(1f))
                 addView(TextView(actividad).apply {
                     text = v.nombre
-                    estilo(13.5f, if (sel) Colores.TEXTO else Colores.TEXTO_2, Peso.EXTRA, 1f)
+                    estilo(13.5f, if (sel) Colores.TEXTO else Colores.TEXTO_2, Peso.NEGRITA, 1f)
                     gravity = Gravity.CENTER
                 })
                 val uso = ar.rama.ai.motor.PlanDeMemoria.estimar(v.bytesAproximados, edicion.elementosKvPorToken, 4096)
                 addView(TextView(actividad).apply {
                     text = "${v.cuantizacion} · usa ~${uso.totalLegible}"
-                    estilo(11.5f, if (sel) tono else Colores.TEXTO_3, Peso.NEGRITA, 1f)
+                    estilo(11.5f, if (sel) Colores.ACENTO_CLARO else Colores.TEXTO_3, Peso.MEDIO, 1f)
                     gravity = Gravity.CENTER
                 }, lp(WRAP, WRAP) { topMargin = dp(3f) })
                 setOnClickListener {
@@ -394,11 +384,11 @@ class PantallaModelo(
         val activo = ahorroRam()
         return LinearLayout(actividad).apply {
             orientation = LinearLayout.VERTICAL
-            background = redondeado(Colores.alfa(Colores.AMARILLO, if (activo) 0.10f else 0.05f), dp(14f).toFloat(), Colores.alfa(Colores.AMARILLO, 0.4f), dp(1f))
+            background = redondeado(Colores.SUPERFICIE_ALTA, dp(12f).toFloat(), Colores.BORDE_TENUE, dp(1f))
             setPadding(dp(12f), dp(10f), dp(12f), dp(10f))
             addView(TextView(actividad).apply {
                 text = if (activo) "Pide desde ${P.legible(ahorro)} libres" else "Pide ${P.legible(completo)} libres"
-                estilo(13.5f, Colores.AMARILLO, Peso.EXTRA, 1.1f)
+                estilo(13.5f, Colores.TEXTO, Peso.NEGRITA, 1.1f)
             })
             addView(TextView(actividad).apply {
                 text = if (activo) "Con Ahorro de RAM: si no entra entera, lee del almacenamiento lo que falta (más lenta). Con ${P.legible(completo)} libres va a velocidad completa."
@@ -419,10 +409,10 @@ class PantallaModelo(
     private fun tarjetaManual(): View {
         val caja = LinearLayout(actividad).apply {
             orientation = LinearLayout.VERTICAL
-            background = redondeado(Colores.alfa(Colores.SUPERFICIE, 0.85f), dp(22f).toFloat(), Colores.BORDE_TENUE, dp(1f))
+            background = redondeado(Colores.SUPERFICIE, dp(16f).toFloat(), Colores.BORDE_TENUE, dp(1f))
             setPadding(dp(16f), dp(14f), dp(16f), dp(16f))
         }
-        caja.addView(actividad.rotulo("¿No baja?", Colores.NARANJA))
+        caja.addView(actividad.rotulo("¿No baja?"))
         caja.addView(TextView(actividad).apply {
             text = "Copiá el enlace, bajalo desde el navegador y después elegí el archivo .gguf acá. También sirve para probar otro modelo GGUF que tengas."
             estilo(13f, Colores.TEXTO_2, Peso.NORMAL, 1.4f)
@@ -441,15 +431,15 @@ class PantallaModelo(
         val bytes = viejos.sumOf { it.length() }
         val caja = LinearLayout(actividad).apply {
             orientation = LinearLayout.VERTICAL
-            background = redondeado(Colores.alfa(Colores.NARANJA, 0.08f), dp(22f).toFloat(), Colores.alfa(Colores.NARANJA, 0.4f), dp(1f))
+            background = redondeado(Colores.SUPERFICIE, dp(16f).toFloat(), Colores.BORDE_TENUE, dp(1f))
             setPadding(dp(16f), dp(14f), dp(16f), dp(16f))
         }
-        caja.addView(actividad.rotulo("Modelos viejos", Colores.NARANJA))
+        caja.addView(actividad.rotulo("Modelos viejos"))
         caja.addView(TextView(actividad).apply {
             text = "${viejos.size} archivo(s) de la versión anterior ocupan ${peso(bytes)}. Rama ya no los usa: podés borrarlos."
             estilo(13f, Colores.TEXTO_2, Peso.NORMAL, 1.4f)
         }, lp(MATCH, WRAP) { topMargin = dp(8f) })
-        caja.addView(actividad.boton("Borrar modelos viejos", intArrayOf(Colores.NARANJA, Colores.CORAL), Trazos.papelera()) {
+        caja.addView(actividad.boton("Borrar modelos viejos", Colores.PELIGRO, Trazos.papelera()) {
             for (f in viejos) {
                 if (modeloActivo()?.absolutePath == f.absolutePath) alQuitar()
                 f.delete()
@@ -462,12 +452,12 @@ class PantallaModelo(
     private fun aviso(titulo: String, cuerpo: String, color: Int): View {
         val caja = LinearLayout(actividad).apply {
             orientation = LinearLayout.VERTICAL
-            background = redondeado(Colores.alfa(color, 0.1f), dp(18f).toFloat(), Colores.alfa(color, 0.5f), dp(1f))
+            background = redondeado(Colores.alfa(color, 0.08f), dp(14f).toFloat(), Colores.alfa(color, 0.35f), dp(1f))
             setPadding(dp(16f), dp(14f), dp(16f), dp(14f))
         }
         caja.addView(TextView(actividad).apply {
             text = titulo
-            estilo(14.5f, color, Peso.EXTRA, 1.2f)
+            estilo(14.5f, color, Peso.NEGRITA, 1.2f)
         })
         caja.addView(TextView(actividad).apply {
             text = cuerpo

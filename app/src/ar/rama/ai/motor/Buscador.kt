@@ -7,61 +7,82 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.Callable
+import java.util.concurrent.ExecutorCompletionService
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
 
 /**
- * La búsqueda web de Rama. No usa claves ni servicios pagos: prueba varios
- * buscadores públicos en orden (DuckDuckGo, Bing, Mojeek) hasta que uno
- * responda, suma Wikipedia para los datos, Google Noticias para la actualidad
+ * La búsqueda web de Rama. No usa claves ni servicios pagos: consulta a la vez
+ * varios buscadores públicos (DuckDuckGo, Bing, Mojeek) y se queda con el
+ * primero que responda; suma Wikipedia para los datos, Google Noticias para la actualidad
  * y dos fuentes estructuradas (cotizaciones del dólar y clima). Además puede
  * abrir las páginas encontradas y quedarse con los párrafos que importan.
  */
 class Buscador {
 
-    /** Resultados web generales, del primer buscador que conteste. */
-    fun web(consulta: String, maximo: Int): List<Resultado> {
-        val intentos = listOf<() -> List<Resultado>>(
-            { duckDuckGo(consulta) },
-            { duckDuckGoLite(consulta) },
-            { bing(consulta) },
-            { mojeek(consulta) },
+    /**
+     * Resultados web generales. Los buscadores se consultan todos a la vez y
+     * gana el primero que devuelve algo: no hay que esperar a que uno falle
+     * para probar el siguiente.
+     */
+    fun web(consulta: String, maximo: Int, segundos: Long = 8): List<Resultado> {
+        val tareas = listOf<Callable<List<Resultado>>>(
+            Callable { duckDuckGo(consulta) },
+            Callable { duckDuckGoLite(consulta) },
+            Callable { bing(consulta) },
+            Callable { mojeek(consulta) },
         )
-        for (intento in intentos) {
-            val encontrados = try {
-                intento()
-            } catch (e: Exception) {
-                emptyList()
+        val servicio = ExecutorCompletionService<List<Resultado>>(HILOS)
+        val futuros = tareas.map { servicio.submit(it) }
+        val limite = System.nanoTime() + TimeUnit.SECONDS.toNanos(segundos)
+        try {
+            repeat(tareas.size) {
+                val restante = limite - System.nanoTime()
+                if (restante <= 0) return emptyList()
+                val listo = servicio.poll(restante, TimeUnit.NANOSECONDS) ?: return emptyList()
+                val limpios = depurar(
+                    try {
+                        listo.get()
+                    } catch (e: Exception) {
+                        emptyList()
+                    },
+                )
+                if (limpios.isNotEmpty()) return limpios.take(maximo)
             }
-            val limpios = depurar(encontrados)
-            if (limpios.isNotEmpty()) return limpios.take(maximo)
+            return emptyList()
+        } finally {
+            futuros.forEach { it.cancel(true) }
         }
-        return emptyList()
     }
+
+    /** Corre una consulta en paralelo (herramientas, Wikipedia, noticias…). */
+    fun <T> lanzar(tarea: () -> T): Future<T> = HILOS.submit(Callable { tarea() })
 
     // ------------------------------------------------------------ buscadores
 
     private fun duckDuckGo(consulta: String): List<Resultado> {
-        val html = Red.post("https://html.duckduckgo.com/html/", mapOf("q" to consulta, "kl" to "ar-es"))
-            ?: Red.get("https://html.duckduckgo.com/html/?q=" + Red.codificar(consulta) + "&kl=ar-es")
+        val html = Red.post("https://html.duckduckgo.com/html/", mapOf("q" to consulta, "kl" to "ar-es"), tiempo = TIEMPO)
+            ?: Red.get("https://html.duckduckgo.com/html/?q=" + Red.codificar(consulta) + "&kl=ar-es", tiempo = TIEMPO)
             ?: return emptyList()
         return parsearDuckDuckGo(html)
     }
 
     private fun duckDuckGoLite(consulta: String): List<Resultado> {
-        val html = Red.get("https://lite.duckduckgo.com/lite/?q=" + Red.codificar(consulta) + "&kl=ar-es")
+        val html = Red.get("https://lite.duckduckgo.com/lite/?q=" + Red.codificar(consulta) + "&kl=ar-es", tiempo = TIEMPO)
             ?: return emptyList()
         return parsearDuckDuckGoLite(html)
     }
 
     private fun bing(consulta: String): List<Resultado> {
-        val html = Red.get("https://www.bing.com/search?q=" + Red.codificar(consulta) + "&setlang=es&cc=AR")
+        val html = Red.get("https://www.bing.com/search?q=" + Red.codificar(consulta) + "&setlang=es&cc=AR", tiempo = TIEMPO)
             ?: return emptyList()
         return parsearBing(html)
     }
 
     private fun mojeek(consulta: String): List<Resultado> {
-        val html = Red.get("https://www.mojeek.com/search?q=" + Red.codificar(consulta) + "&lb=es")
+        val html = Red.get("https://www.mojeek.com/search?q=" + Red.codificar(consulta) + "&lb=es", tiempo = TIEMPO)
             ?: return emptyList()
         return parsearMojeek(html)
     }
@@ -73,7 +94,7 @@ class Buscador {
         val url = "https://es.wikipedia.org/w/api.php?action=query&format=json&generator=search" +
             "&gsrsearch=" + Red.codificar(consulta) + "&gsrlimit=1&prop=extracts%7Cinfo&exintro=1" +
             "&explaintext=1&exsentences=" + oraciones + "&inprop=url&redirects=1&utf8=1"
-        val json = Red.get(url, cabeceras = mapOf("User-Agent" to "RamaAI/4.0 (app Android; busqueda)")) ?: return null
+        val json = Red.get(url, tiempo = TIEMPO, cabeceras = mapOf("User-Agent" to "RamaAI/4.1 (app Android; busqueda)")) ?: return null
         return try {
             val paginas = JSONObject(json).optJSONObject("query")?.optJSONObject("pages") ?: return null
             val claves = paginas.keys()
@@ -96,7 +117,7 @@ class Buscador {
     /** Titulares recientes de Google Noticias (edición Argentina). */
     fun noticias(consulta: String, maximo: Int): List<Resultado> {
         val url = "https://news.google.com/rss/search?q=" + Red.codificar(consulta) + "&hl=es-419&gl=AR&ceid=AR:es-419"
-        val xml = Red.get(url) ?: return emptyList()
+        val xml = Red.get(url, tiempo = TIEMPO) ?: return emptyList()
         return parsearNoticias(xml).take(maximo)
     }
 
@@ -187,7 +208,7 @@ class Buscador {
         val hilos = Executors.newFixedThreadPool(minOf(3, resultados.size))
         return try {
             val tareas = resultados.map { r -> Callable { r.url to (leerPagina(r.url, consulta, caracteres) ?: "") } }
-            val futuros = hilos.invokeAll(tareas, 14, TimeUnit.SECONDS)
+            val futuros = hilos.invokeAll(tareas, 9, TimeUnit.SECONDS)
             val salida = LinkedHashMap<String, String>()
             for (f in futuros) {
                 if (f.isCancelled) continue
@@ -209,11 +230,19 @@ class Buscador {
     fun leerPagina(url: String, consulta: String, caracteres: Int): String? {
         if (!url.startsWith("http")) return null
         if (url.endsWith(".pdf", ignoreCase = true)) return null
-        val html = Red.get(url, maxBytes = 700_000, tiempo = 9000) ?: return null
+        val html = Red.get(url, maxBytes = 600_000, tiempo = 7000) ?: return null
         return extraerRelevante(html, consulta, caracteres)
     }
 
     companion object {
+        /** Tiempo máximo de cada pedido a un buscador (milisegundos). */
+        const val TIEMPO = 6000
+
+        /** Hilos para pedidos de red en paralelo; no frenan el cierre de la app. */
+        val HILOS: ExecutorService = Executors.newCachedThreadPool { tarea ->
+            Thread(tarea, "rama-red").apply { isDaemon = true }
+        }
+
         private val OPCIONES = setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)
         private val ENLACE = Regex("<a\\b([^>]*)>(.*?)</a>", OPCIONES)
         private val PARRAFO = Regex("<(p|li|h[1-4]|blockquote|dd|td)\\b[^>]*>(.*?)</\\1\\s*>", OPCIONES)

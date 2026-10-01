@@ -65,6 +65,8 @@ class MainActivity : Activity() {
     private var cargandoModelo = false
     private var modeloEnPausa = false
     private var generando = false
+    /** true entre onStart y onStop: si no, la respuesta termina con una notificación. */
+    private var enPrimerPlano = false
 
     @Volatile
     private var detener = false
@@ -128,7 +130,7 @@ class MainActivity : Activity() {
         chatActual = prefs.getString("chat", null) ?: Conversaciones.nuevoId()
 
         raiz = FrameLayout(this).apply {
-            background = FondoAurora()
+            setBackgroundColor(Colores.FONDO)
             fitsSystemWindows = true
         }
         raiz.addView(construirPantalla(), FrameLayout.LayoutParams(MATCH, MATCH))
@@ -160,6 +162,8 @@ class MainActivity : Activity() {
             alTerminarDescarga = { alTerminarDescarga(it) },
         )
         setContentView(raiz)
+        ServicioRama.alDetener = { principal.post { if (generando) detenerRespuesta() } }
+        Avisos.crearCanales(this)
         cargarCerebro()
     }
 
@@ -170,8 +174,19 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         pantallaModelo.cerrar()
-        motor?.cerrar()
-        trabajador.shutdownNow()
+        ServicioRama.alDetener = null
+        ServicioRama.terminar(this)
+        // Si está escribiendo, primero se corta la respuesta y después se cierra el
+        // modelo en su propio hilo: cerrarlo mientras genera rompería el motor nativo.
+        detener = true
+        asistente?.cancelar()
+        val cerrar = motor
+        motor = null
+        trabajador.execute {
+            asistente?.motor = null
+            cerrar?.cerrar()
+        }
+        trabajador.shutdown()
         super.onDestroy()
     }
 
@@ -198,14 +213,25 @@ class MainActivity : Activity() {
 
     override fun onStop() {
         super.onStop()
-        // Con la app en segundo plano, un modelo grande se suelta a los 2 minutos:
-        // son varios GB que el resto del teléfono puede usar mientras tanto.
+        enPrimerPlano = false
+        // Si está respondiendo, sigue en segundo plano: la notificación muestra en qué anda.
+        if (generando) Avisos.actualizar(this, preguntaEnCurso, etapaEnCurso)
+        armarSueltaPorInactividad()
+    }
+
+    /**
+     * Con la app en segundo plano, un modelo grande se suelta a los 2 minutos:
+     * son varios GB que el resto del teléfono puede usar mientras tanto.
+     */
+    private fun armarSueltaPorInactividad() {
         principal.removeCallbacks(soltarPorInactividad)
         if ((motor?.plan?.total ?: 0L) > MODELO_GRANDE) principal.postDelayed(soltarPorInactividad, INACTIVIDAD)
     }
 
     override fun onStart() {
         super.onStart()
+        enPrimerPlano = true
+        Avisos.limpiarLista(this)
         principal.removeCallbacks(soltarPorInactividad)
         // Si se soltó por inactividad, se vuelve a abrir en cuanto la app vuelve al frente.
         if (soltadoPorInactividad && modeloEnPausa && motor == null && !cargandoModelo) {
@@ -293,10 +319,10 @@ class MainActivity : Activity() {
         scroll.addView(lista, FrameLayout.LayoutParams(MATCH, WRAP))
         contenedor.addView(scroll, FrameLayout.LayoutParams(MATCH, MATCH))
         tostada = TextView(this).apply {
-            estilo(12.5f, Colores.TEXTO, Peso.NEGRITA, 1.25f)
+            estilo(12.5f, Colores.TEXTO, Peso.MEDIO, 1.25f)
             gravity = Gravity.CENTER
-            relleno(dp(14f), dp(9f))
-            background = bordeDegradado(Colores.MARCA, Colores.SUPERFICIE_ALTA, dp(999f).toFloat(), dp(1.2f))
+            relleno(dp(14f), dp(10f))
+            background = redondeado(Colores.SUPERFICIE_ALTA, dp(10f).toFloat(), Colores.BORDE, dp(1f))
             alpha = 0f
             elevation = dp(6f).toFloat()
             maxWidth = (resources.displayMetrics.widthPixels * 0.88f).toInt()
@@ -325,8 +351,7 @@ class MainActivity : Activity() {
         }
         marca.addView(TextView(this).apply {
             text = "Rama"
-            estilo(24f, Colores.TEXTO, Peso.EXTRA, 1f)
-            textoDegradado(Colores.MARCA)
+            estilo(19f, Colores.TEXTO, Peso.NEGRITA, 1f)
         })
         val estado = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -344,8 +369,8 @@ class MainActivity : Activity() {
         fila.addView(marca, lp(0, WRAP, 1f))
 
         chipModelo = TextView(this).apply {
-            estilo(12.5f, Colores.TEXTO, Peso.NEGRITA, 1f)
-            relleno(dp(12f), dp(9f))
+            estilo(12.5f, Colores.TEXTO_2, Peso.MEDIO, 1f)
+            relleno(dp(11f), dp(8f))
             setSingleLine()
             maxWidth = dp(130f)
             ellipsize = TextUtils.TruncateAt.END
@@ -361,24 +386,24 @@ class MainActivity : Activity() {
         val tarjeta = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            val radio = dp(18f).toFloat()
-            background = pulsable(bordeDegradado(Colores.MARCA, Colores.alfa(Colores.SUPERFICIE, 0.96f), radio, dp(1.5f)), radio)
+            val radio = dp(14f).toFloat()
+            background = pulsable(Colores.SUPERFICIE, radio, Colores.BORDE, dp(1f))
             setPadding(dp(12f), dp(11f), dp(12f), dp(11f))
             setOnClickListener { pantallaModelo.mostrar() }
         }
         tarjeta.addView(ImageView(this).apply {
             setImageDrawable(Icono(Trazos.descargar(), Colores.TEXTO, 2.2f))
             setPadding(dp(8f), dp(8f), dp(8f), dp(8f))
-            background = degradado(Colores.MARCA, dp(12f).toFloat())
+            background = redondeado(Colores.ACENTO, dp(10f).toFloat())
         }, lp(dp(36f), dp(36f)) { rightMargin = dp(12f) })
         val textos = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         textos.addView(TextView(this).apply {
             text = "Descargá el modelo Rama"
-            estilo(14f, Colores.TEXTO, Peso.EXTRA, 1.1f)
+            estilo(14f, Colores.TEXTO, Peso.NEGRITA, 1.1f)
         })
         textos.addView(TextView(this).apply {
             text = "Una sola vez y después funciona sin internet. Tocá acá."
-            estilo(12f, Colores.TEXTO_2, Peso.MEDIO, 1.2f)
+            estilo(12f, Colores.TEXTO_2, Peso.NORMAL, 1.2f)
         }, lp(WRAP, WRAP) { topMargin = dp(2f) })
         tarjeta.addView(textos, lp(0, WRAP, 1f))
         return tarjeta
@@ -392,14 +417,13 @@ class MainActivity : Activity() {
         val capsula = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.BOTTOM
-            background = redondeado(Colores.alfa(Colores.SUPERFICIE, 0.96f), dp(26f).toFloat(), Colores.BORDE, dp(1f))
+            background = redondeado(Colores.SUPERFICIE, dp(24f).toFloat(), Colores.BORDE, dp(1f))
             setPadding(dp(5f), dp(5f), dp(5f), dp(5f))
-            elevation = dp(4f).toFloat()
         }
         capsula.addView(botonIcono(Trazos.mas(), "Adjuntar foto, PDF o video", 40f, 19f, Colores.TEXTO_2, Colores.SUPERFICIE_ALTA, 0) { pedirArchivo() })
         entrada = EditText(this).apply {
             hint = "Preguntale a Rama…"
-            estilo(15.5f, Colores.TEXTO, Peso.MEDIO, 1.25f)
+            estilo(15.5f, Colores.TEXTO, Peso.NORMAL, 1.25f)
             setHintTextColor(Colores.TEXTO_3)
             background = null
             setPadding(dp(10f), dp(10f), dp(8f), dp(10f))
@@ -440,21 +464,21 @@ class MainActivity : Activity() {
         val radio = dp(20f).toFloat()
         if (generando) {
             botonEnviar.setImageDrawable(Icono(Trazos.detener(), Colores.TEXTO, 2f, true))
-            botonEnviar.background = pulsable(degradado(intArrayOf(Colores.CORAL, Colores.ROJO), radio), radio)
+            botonEnviar.background = pulsable(Colores.PELIGRO, radio)
             botonEnviar.contentDescription = "Detener"
             return
         }
         val hayTexto = entrada.text.isNotBlank()
         botonEnviar.setImageDrawable(Icono(Trazos.enviar(), if (hayTexto) Colores.TEXTO else Colores.TEXTO_3, 2.4f))
-        botonEnviar.background = if (hayTexto) pulsable(degradado(Colores.MARCA, radio), radio)
+        botonEnviar.background = if (hayTexto) pulsable(Colores.ACENTO, radio)
         else pulsable(Colores.SUPERFICIE_ALTA, radio)
         botonEnviar.contentDescription = "Enviar"
     }
 
     private fun pintarBotonWeb() {
         val radio = dp(20f).toFloat()
-        botonWeb.setImageDrawable(Icono(Trazos.globo(), if (buscarWeb) Colores.CELESTE else Colores.TEXTO_3, 2f))
-        botonWeb.background = if (buscarWeb) pulsable(Colores.alfa(Colores.CELESTE, 0.14f), radio, Colores.alfa(Colores.CELESTE, 0.55f), dp(1f))
+        botonWeb.setImageDrawable(Icono(Trazos.globo(), if (buscarWeb) Colores.ACENTO_CLARO else Colores.TEXTO_3, 2f))
+        botonWeb.background = if (buscarWeb) pulsable(Colores.alfa(Colores.ACENTO, 0.14f), radio, Colores.alfa(Colores.ACENTO, 0.45f), dp(1f))
         else pulsable(Colores.SUPERFICIE_ALTA, radio)
         botonWeb.contentDescription = if (buscarWeb) "Búsqueda web activada" else "Búsqueda web apagada"
     }
@@ -462,30 +486,29 @@ class MainActivity : Activity() {
     private fun pintarEstadoModelo() {
         val m = motor
         val (texto, color) = when {
-            cargandoModelo -> "cargando el modelo…" to Colores.LILA
-            m != null && m.plan.enAhorro -> "${m.nombre} · ahorro de RAM (${m.plan.enUsoLegible})" to Colores.AMARILLO
-            m != null -> "${m.nombre} · lista · ${m.plan.totalLegible} de RAM" to Colores.MENTA
-            modeloEnPausa -> "modelo en pausa (se recarga solo)" to Colores.LILA
-            !Llama.disponible -> "sin motor en este teléfono" to Colores.ERROR
-            else -> "sin modelo · tocá Modelo" to Colores.NARANJA
+            cargandoModelo -> "cargando el modelo…" to Colores.ACENTO_CLARO
+            m != null && m.plan.enAhorro -> "${m.nombre} · ahorro de RAM (${m.plan.enUsoLegible})" to Colores.AVISO
+            m != null -> "${m.nombre} · lista · ${m.plan.totalLegible} de RAM" to Colores.EXITO
+            modeloEnPausa -> "modelo en pausa (se recarga solo)" to Colores.TEXTO_3
+            !Llama.disponible -> "sin motor en este teléfono" to Colores.PELIGRO
+            else -> "sin modelo · tocá Modelo" to Colores.AVISO
         }
         subtitulo.text = texto
         puntoEstado.background = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
             setColor(color)
         }
-        val radio = dp(999f).toFloat()
+        val radio = dp(10f).toFloat()
         chipModelo.text = when {
             cargandoModelo -> "Cargando…"
             m != null -> (m.edicion?.nombre?.removePrefix("Rama ") ?: "Propio")
             else -> "Modelo"
         }
-        val (icono, tono) = if (m != null) Trazos.chip() to Colores.MENTA else Trazos.descargar() to Colores.NARANJA
-        val dibujo = Icono(icono, tono, 2.2f)
+        val dibujo = Icono(if (m != null) Trazos.chip() else Trazos.descargar(), Colores.TEXTO_2, 2.2f)
         dibujo.setBounds(0, 0, dp(14f), dp(14f))
         chipModelo.setCompoundDrawables(dibujo, null, null, null)
         chipModelo.compoundDrawablePadding = dp(6f)
-        chipModelo.background = pulsable(Colores.alfa(tono, 0.12f), radio, Colores.alfa(tono, 0.5f), dp(1f))
+        chipModelo.background = pulsable(Colores.SUPERFICIE, radio, Colores.BORDE, dp(1f))
         avisoModelo.visibility = if (m == null && !cargandoModelo && !modeloEnPausa && Llama.disponible) View.VISIBLE else View.GONE
     }
 
@@ -509,16 +532,16 @@ class MainActivity : Activity() {
     private fun mostrarAjustes() {
         val contenido = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
-        contenido.addView(rotulo("Estilo de respuesta", Colores.LILA))
+        contenido.addView(rotulo("Estilo de respuesta"))
         val estilos = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val descripcion = TextView(this).apply { estilo(12.5f, Colores.TEXTO_2, Peso.NORMAL, 1.35f) }
         val fichas = ArrayList<Pair<Estilo, TextView>>()
         fun pintarEstilos() {
             for ((e, vista) in fichas) {
                 val elegido = e.id == estilo.id
-                val radio = dp(999f).toFloat()
-                vista.estilo(13f, if (elegido) Colores.TEXTO else Colores.TEXTO_2, if (elegido) Peso.EXTRA else Peso.NEGRITA, 1f)
-                vista.background = if (elegido) pulsable(degradado(Colores.MARCA, radio, GradientDrawable.Orientation.LEFT_RIGHT), radio)
+                val radio = dp(10f).toFloat()
+                vista.estilo(13f, if (elegido) Colores.TEXTO else Colores.TEXTO_2, if (elegido) Peso.NEGRITA else Peso.MEDIO, 1f)
+                vista.background = if (elegido) pulsable(Colores.mezclar(Colores.SUPERFICIE_ALTA, Colores.ACENTO, 0.14f), radio, Colores.ACENTO, dp(1f))
                 else pulsable(Colores.SUPERFICIE_ALTA, radio, Colores.BORDE, dp(1f))
             }
             descripcion.text = estilo.descripcion
@@ -534,8 +557,11 @@ class MainActivity : Activity() {
                 gravity = Gravity.CENTER
                 relleno(dp(12f), dp(9f))
                 setOnClickListener {
-                    estilo = e
-                    preferencias().edit().putString("estilo", e.id).apply()
+                    if (estilo.id != e.id) {
+                        estilo = e
+                        preferencias().edit().putString("estilo", e.id).apply()
+                        precalentar()
+                    }
                     pintarEstilos()
                     rebote(this)
                 }
@@ -547,8 +573,8 @@ class MainActivity : Activity() {
         contenido.addView(estilos)
         contenido.addView(descripcion, lp(MATCH, WRAP) { topMargin = dp(8f); bottomMargin = dp(18f) })
 
-        contenido.addView(rotulo("Opciones", Colores.CELESTE), lp(WRAP, WRAP) { bottomMargin = dp(6f) })
-        contenido.addView(filaInterruptor("Buscar en la web", "Cuando la pregunta necesita datos actuales o verificables.", buscarWeb, Colores.CELESTE) {
+        contenido.addView(rotulo("Opciones"), lp(WRAP, WRAP) { bottomMargin = dp(6f) })
+        contenido.addView(filaInterruptor("Buscar en la web", "Cuando la pregunta necesita datos actuales o verificables.", buscarWeb, Colores.ACENTO) {
             buscarWeb = it
             preferencias().edit().putBoolean("web", it).apply()
             pintarBotonWeb()
@@ -556,18 +582,18 @@ class MainActivity : Activity() {
         contenido.addView(filaInterruptor(
             "Ahorro de RAM",
             "Deja abrir Rama Ultra con poca memoria libre: lee del almacenamiento la parte de los pesos que no entra. Responde más lento, pero no hace falta tener 5 GB libres.",
-            ahorroRam, Colores.AMARILLO,
+            ahorroRam, Colores.ACENTO,
         ) {
             ahorroRam = it
             preferencias().edit().putBoolean("ahorro-ram", it).apply()
             if (pantallaModelo.visible) pantallaModelo.refrescar()
         })
-        contenido.addView(filaInterruptor("Mostrar el razonamiento", "Ver en vivo cómo piensa, qué busca y qué lee antes de responder.", mostrarRazonamiento, Colores.LILA) {
+        contenido.addView(filaInterruptor("Mostrar el razonamiento", "Ver en vivo cómo piensa, qué busca y qué lee antes de responder.", mostrarRazonamiento, Colores.ACENTO) {
             mostrarRazonamiento = it
             preferencias().edit().putBoolean("razonamiento", it).apply()
         })
 
-        contenido.addView(rotulo("Niveles de pensamiento", Colores.NARANJA), lp(WRAP, WRAP) { topMargin = dp(18f); bottomMargin = dp(6f) })
+        contenido.addView(rotulo("Niveles de pensamiento"), lp(WRAP, WRAP) { topMargin = dp(18f); bottomMargin = dp(6f) })
         for (n in NivelPensar.entries) {
             val filaNivel = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -575,14 +601,14 @@ class MainActivity : Activity() {
             }
             val (trazo, relleno) = Trazos.nivel(n)
             filaNivel.addView(ImageView(this).apply {
-                setImageDrawable(Icono(trazo, Colores.FONDO, 2.2f, relleno))
+                setImageDrawable(Icono(trazo, Colores.ACENTO_CLARO, 2.2f, relleno))
                 setPadding(dp(7f), dp(7f), dp(7f), dp(7f))
-                background = degradado(Colores.deNivel(n), dp(11f).toFloat())
+                background = redondeado(Colores.SUPERFICIE_ALTA, dp(9f).toFloat(), Colores.BORDE_TENUE, dp(1f))
             }, lp(dp(32f), dp(32f)) { rightMargin = dp(12f) })
             val textos = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
             textos.addView(TextView(this).apply {
                 text = n.nombre + if (n.piensa) "  ·  hasta ${n.presupuesto} tokens de razonamiento" else "  ·  sin razonamiento"
-                estilo(13.5f, Colores.principalDeNivel(n), Peso.EXTRA, 1.1f)
+                estilo(13.5f, Colores.TEXTO, Peso.NEGRITA, 1.1f)
             })
             textos.addView(TextView(this).apply {
                 text = n.descripcion + if (n.paginasALeer > 0) " Lee hasta ${n.paginasALeer} página(s) al buscar." else ""
@@ -593,8 +619,8 @@ class MainActivity : Activity() {
         }
 
         contenido.addView(TextView(this).apply {
-            text = "Rama ${Identidad.VERSION} · modelo de código abierto sobre ${Catalogo.BASE} (${Catalogo.LICENCIA}) · llama.cpp · Nunito"
-            estilo(11.5f, Colores.TEXTO_3, Peso.MEDIO, 1.3f)
+            text = "Rama ${Identidad.VERSION} · modelo de código abierto sobre ${Catalogo.BASE} (${Catalogo.LICENCIA}) · llama.cpp · Inter"
+            estilo(11.5f, Colores.TEXTO_3, Peso.NORMAL, 1.3f)
             gravity = Gravity.CENTER
         }, lp(MATCH, WRAP) { topMargin = dp(18f) })
         hoja.mostrar("Ajustes", contenido)
@@ -640,47 +666,41 @@ class MainActivity : Activity() {
         val columna = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(4f), dp(26f), dp(4f), dp(8f))
+            setPadding(dp(4f), dp(36f), dp(4f), dp(8f))
         }
-        val logo = avatarRama(78f)
-        logo.elevation = dp(10f).toFloat()
-        logo.outlineProvider = object : ViewOutlineProvider() {
-            override fun getOutline(vista: View, contorno: Outline) = contorno.setOval(0, 0, vista.width, vista.height)
-        }
-        columna.addView(logo, lp(dp(78f), dp(78f)))
+        columna.addView(avatarRama(52f), lp(dp(52f), dp(52f)))
         columna.addView(TextView(this).apply {
             text = "Hola, soy Rama"
-            estilo(31f, Colores.TEXTO, Peso.EXTRA, 1.05f)
+            estilo(24f, Colores.TEXTO, Peso.NEGRITA, 1.05f)
             gravity = Gravity.CENTER
-            textoDegradado(Colores.MARCA)
-        }, lp(WRAP, WRAP) { topMargin = dp(16f) })
+        }, lp(WRAP, WRAP) { topMargin = dp(18f) })
         columna.addView(TextView(this).apply {
             text = "Tu IA de código abierto. Pienso adentro de tu teléfono, busco en la web cuando hace falta y vos elegís cuánto razono."
-            estilo(14.5f, Colores.TEXTO_2, Peso.MEDIO, 1.4f)
+            estilo(14.5f, Colores.TEXTO_2, Peso.NORMAL, 1.4f)
             gravity = Gravity.CENTER
-        }, lp(MATCH, WRAP) { setMargins(dp(12f), dp(8f), dp(12f), dp(22f)) })
+        }, lp(MATCH, WRAP) { setMargins(dp(16f), dp(8f), dp(16f), dp(26f)) })
 
         val sugerencias = listOf(
-            Triple("¿Qué pasó hoy en Argentina?", Trazos.globo(), Colores.CELESTE),
-            Triple("¿A cuánto está el dólar hoy?", Trazos.calculadora(), Colores.MENTA),
-            Triple("Explicame la relatividad como si tuviera 12 años", Trazos.lamparita(), Colores.LILA),
-            Triple("Ayudame a escribir un mensaje para mi jefe", Trazos.lapiz(), Colores.NARANJA),
+            "¿Qué pasó hoy en Argentina?" to Trazos.globo(),
+            "¿A cuánto está el dólar hoy?" to Trazos.calculadora(),
+            "Explicame la relatividad como si tuviera 12 años" to Trazos.lamparita(),
+            "Ayudame a escribir un mensaje para mi jefe" to Trazos.lapiz(),
         )
         for (fila in sugerencias.chunked(2)) {
             val renglon = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-            fila.forEachIndexed { i, (texto, trazo, tono) ->
-                renglon.addView(tarjetaSugerencia(texto, trazo, tono), lp(0, MATCH, 1f) { if (i == 0) rightMargin = dp(10f) })
+            fila.forEachIndexed { i, (texto, trazo) ->
+                renglon.addView(tarjetaSugerencia(texto, trazo), lp(0, MATCH, 1f) { if (i == 0) rightMargin = dp(10f) })
             }
             columna.addView(renglon, lp(MATCH, WRAP) { bottomMargin = dp(10f) })
         }
         return columna
     }
 
-    private fun tarjetaSugerencia(texto: String, trazo: android.graphics.Path, tono: Int): View {
-        val radio = dp(20f).toFloat()
+    private fun tarjetaSugerencia(texto: String, trazo: android.graphics.Path): View {
+        val radio = dp(14f).toFloat()
         val tarjeta = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = pulsable(redondeado(Colores.alfa(Colores.SUPERFICIE, 0.82f), radio, Colores.alfa(tono, 0.35f), dp(1f)), radio)
+            background = pulsable(Colores.SUPERFICIE, radio, Colores.BORDE_TENUE, dp(1f))
             setPadding(dp(14f), dp(14f), dp(14f), dp(14f))
             setOnClickListener {
                 rebote(this)
@@ -688,13 +708,11 @@ class MainActivity : Activity() {
             }
         }
         tarjeta.addView(ImageView(this).apply {
-            setImageDrawable(Icono(trazo, Colores.FONDO, 2.1f))
-            setPadding(dp(7f), dp(7f), dp(7f), dp(7f))
-            background = degradado(intArrayOf(tono, Colores.mezclar(tono, Colores.FUCSIA, 0.35f)), dp(11f).toFloat())
-        }, lp(dp(32f), dp(32f)) { bottomMargin = dp(10f) })
+            setImageDrawable(Icono(trazo, Colores.TEXTO_2, 2f))
+        }, lp(dp(18f), dp(18f)) { bottomMargin = dp(12f) })
         tarjeta.addView(TextView(this).apply {
             text = texto
-            estilo(13.5f, Colores.TEXTO, Peso.NEGRITA, 1.3f)
+            estilo(13.5f, Colores.TEXTO, Peso.MEDIO, 1.3f)
         })
         return tarjeta
     }
@@ -702,10 +720,10 @@ class MainActivity : Activity() {
     private fun burbujaUsuario(texto: String) {
         val burbuja = TextView(this).apply {
             text = texto
-            estilo(15.5f, Colores.TEXTO, Peso.MEDIO, 1.35f)
+            estilo(15.5f, Colores.TEXTO, Peso.NORMAL, 1.35f)
             setPadding(dp(15f), dp(11f), dp(15f), dp(11f))
-            val grande = dp(22f).toFloat()
-            background = degradado(intArrayOf(Colores.VIOLETA, Colores.FUCSIA), 0f, GradientDrawable.Orientation.TL_BR, esquinas(grande, dp(6f).toFloat(), grande))
+            val grande = dp(18f).toFloat()
+            background = redondeado(Colores.SUPERFICIE_ALTA, 0f, radios = esquinas(grande, dp(6f).toFloat(), grande))
             maxWidth = (resources.displayMetrics.widthPixels * 0.8f).toInt()
             setOnLongClickListener {
                 copiar(texto)
@@ -776,6 +794,10 @@ class MainActivity : Activity() {
         generando = true
         detener = false
         pintarBotonEnviar()
+        pedirPermisoDeAvisos()
+        preguntaEnCurso = limpio
+        etapaEnCurso = "Pensando…"
+        ServicioRama.empezar(this, limpio)
         val turnos = historial.toList()
         historial.add(Mensaje("user", limpio))
         val ajustes = AjustesRama(nivelUsado, estilo, buscarWeb)
@@ -785,7 +807,10 @@ class MainActivity : Activity() {
         var pintarPendiente = false
         val oyente = object : OyenteRama {
             override fun paso(paso: PasoRama) {
-                principal.post { tarjeta?.agregarPaso(paso) }
+                principal.post {
+                    tarjeta?.agregarPaso(paso)
+                    contarEtapa(paso.titulo)
+                }
             }
 
             override fun pensamiento(fragmento: String) {
@@ -795,6 +820,7 @@ class MainActivity : Activity() {
             override fun texto(fragmento: String) {
                 principal.post {
                     tarjeta?.terminarPensar()
+                    if (escrito.isEmpty()) contarEtapa("Escribiendo la respuesta…")
                     escrito.append(fragmento)
                     if (!pintarPendiente) {
                         pintarPendiente = true
@@ -821,13 +847,62 @@ class MainActivity : Activity() {
                 }
                 null
             }
-            principal.post { terminarRespuesta(vista, tarjeta, resultado) }
+            principal.post { terminarRespuesta(limpio, vista, tarjeta, resultado) }
         }
     }
 
-    private fun terminarRespuesta(vista: VistaRespuesta, tarjeta: TarjetaPensar?, respuesta: RespuestaRama?) {
+    private var preguntaEnCurso = ""
+    private var etapaEnCurso = ""
+    private var ultimaEtapa = 0L
+    private var precalentarAlTerminar = false
+
+    /** Lo que se ve en la notificación mientras responde en segundo plano. */
+    private fun contarEtapa(etapa: String) {
+        etapaEnCurso = etapa
+        if (enPrimerPlano) return
+        val ahora = System.currentTimeMillis()
+        if (ahora - ultimaEtapa < 1000) return
+        ultimaEtapa = ahora
+        Avisos.actualizar(this, preguntaEnCurso, etapa)
+    }
+
+    private fun pedirPermisoDeAvisos() {
+        if (android.os.Build.VERSION.SDK_INT < 33 || Avisos.permitidas(this)) return
+        val prefs = preferencias()
+        if (prefs.getBoolean("pidio-avisos", false)) return
+        prefs.edit().putBoolean("pidio-avisos", true).apply()
+        try {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), PEDIDO_AVISOS)
+        } catch (e: Exception) {
+        }
+    }
+
+    /**
+     * Procesa el comienzo fijo de todos los pedidos (las instrucciones de Rama)
+     * con el modelo ocioso, así la primera respuesta arranca sin esa espera.
+     */
+    private fun precalentar() {
+        if (generando) {
+            precalentarAlTerminar = true
+            return
+        }
+        val estiloActual = estilo
+        trabajador.execute { asistente?.precalentar(estiloActual) }
+    }
+
+    private fun terminarRespuesta(pregunta: String, vista: VistaRespuesta, tarjeta: TarjetaPensar?, respuesta: RespuestaRama?) {
         generando = false
+        ServicioRama.terminar(this)
         pintarBotonEnviar()
+        if (!enPrimerPlano) {
+            if (respuesta != null && !respuesta.detenida) Avisos.lista(this, pregunta, respuesta.texto)
+            armarSueltaPorInactividad()
+        }
+        // Si cambió el estilo mientras respondía, se prepara el nuevo comienzo ahora.
+        if (precalentarAlTerminar) {
+            precalentarAlTerminar = false
+            precalentar()
+        }
         tarjeta?.cerrar(respuesta)
         if (respuesta == null) {
             vista.mostrarTexto("(no pude responder)", false)
@@ -990,6 +1065,7 @@ class MainActivity : Activity() {
                     burbujaRama("No pude cargar «${archivo.name}». Puede que el archivo esté incompleto, que no sea un GGUF o que al teléfono le falte memoria para esta edición.")
                 } else {
                     preferencias().edit().putString("modelo", archivo.absolutePath).apply()
+                    precalentar()
                     if (plan.enAhorro) {
                         burbujaRama(
                             "Abrí **${abierto.nombre}** en **modo ahorro de RAM**: reservo ${PlanDeMemoria.legible(plan.fijo)} fijos y de los " +
@@ -1169,7 +1245,7 @@ class MainActivity : Activity() {
             text = "Leyendo el archivo…"
             estilo(13.5f, Colores.TEXTO_2, Peso.MEDIO, 1f)
             relleno(dp(14f), dp(11f))
-            background = redondeado(Colores.alfa(Colores.SUPERFICIE, 0.9f), dp(16f).toFloat(), Colores.BORDE, dp(1f))
+            background = redondeado(Colores.SUPERFICIE, dp(12f).toFloat(), Colores.BORDE, dp(1f))
         }
         lista.addView(cargando, lp(WRAP, WRAP) {
             gravity = Gravity.END
@@ -1200,10 +1276,10 @@ class MainActivity : Activity() {
     }
 
     private fun tarjetaAdjunto(adjunto: Adjunto) {
-        val grande = dp(22f).toFloat()
+        val grande = dp(16f).toFloat()
         val tarjeta = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = bordeDegradado(intArrayOf(Colores.VIOLETA, Colores.FUCSIA), Colores.SUPERFICIE_ALTA, grande, dp(1.5f))
+            background = redondeado(Colores.SUPERFICIE_ALTA, grande, Colores.BORDE, dp(1f))
             setPadding(dp(6f), dp(6f), dp(6f), dp(10f))
         }
         adjunto.miniatura?.let { miniatura ->
@@ -1215,7 +1291,7 @@ class MainActivity : Activity() {
                 clipToOutline = true
                 outlineProvider = object : ViewOutlineProvider() {
                     override fun getOutline(vista: View, contorno: Outline) =
-                        contorno.setRoundRect(0, 0, vista.width, vista.height, dp(17f).toFloat())
+                        contorno.setRoundRect(0, 0, vista.width, vista.height, dp(11f).toFloat())
                 }
             }, lp(ancho, alto))
         }
@@ -1224,7 +1300,7 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(8f), dp(10f), dp(8f), 0)
         }
-        fila.addView(ImageView(this).apply { setImageDrawable(Icono(Trazos.documento(), Colores.LILA, 2f)) }, lp(dp(16f), dp(16f)) { rightMargin = dp(8f) })
+        fila.addView(ImageView(this).apply { setImageDrawable(Icono(Trazos.documento(), Colores.TEXTO_2, 2f)) }, lp(dp(16f), dp(16f)) { rightMargin = dp(8f) })
         val textos = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         textos.addView(TextView(this).apply {
             text = adjunto.nombre
@@ -1249,7 +1325,7 @@ class MainActivity : Activity() {
     private fun fichaDatos(datos: List<Pair<String, String>>): View {
         val ficha = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = redondeado(Colores.alfa(Colores.SUPERFICIE, 0.9f), dp(16f).toFloat(), Colores.BORDE_TENUE, dp(1f))
+            background = redondeado(Colores.SUPERFICIE, dp(12f).toFloat(), Colores.BORDE_TENUE, dp(1f))
             setPadding(dp(14f), dp(10f), dp(14f), dp(10f))
         }
         for ((clave, valor) in datos) {
@@ -1259,7 +1335,7 @@ class MainActivity : Activity() {
             }
             fila.addView(TextView(this).apply {
                 text = clave
-                estilo(12f, Colores.TEXTO_3, Peso.NEGRITA, 1.2f)
+                estilo(12f, Colores.TEXTO_3, Peso.MEDIO, 1.2f)
             }, lp(0, WRAP, 1f))
             fila.addView(TextView(this).apply {
                 text = valor
@@ -1313,6 +1389,7 @@ class MainActivity : Activity() {
         private const val ARCHIVO_ERROR = "ultimo-error.txt"
         private const val PEDIDO_ARCHIVO = 1001
         private const val PEDIDO_MODELO = 1002
+        private const val PEDIDO_AVISOS = 1003
         /** Arriba de esto (≈ Rama Ultra) el modelo se suelta apenas escasea la memoria. */
         private const val MODELO_GRANDE = 3_500_000_000L
         /** Cuánto espera en segundo plano antes de soltar un modelo grande. */

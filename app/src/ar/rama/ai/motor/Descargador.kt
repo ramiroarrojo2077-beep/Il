@@ -48,7 +48,7 @@ object Descargador {
             conexion.connectTimeout = 15_000
             conexion.readTimeout = 15_000
             conexion.instanceFollowRedirects = true
-            conexion.setRequestProperty("User-Agent", "RamaAI/4.0")
+            conexion.setRequestProperty("User-Agent", "RamaAI/4.1")
             conexion.responseCode in 200..299
         } catch (e: Exception) {
             false
@@ -61,7 +61,7 @@ object Descargador {
         val json = Red.get(
             "https://huggingface.co/api/models/$repositorio",
             tiempo = 15_000,
-            cabeceras = mapOf("User-Agent" to "RamaAI/4.0"),
+            cabeceras = mapOf("User-Agent" to "RamaAI/4.1"),
         ) ?: return null
         return try {
             val hermanos = JSONObject(json).optJSONArray("siblings") ?: return null

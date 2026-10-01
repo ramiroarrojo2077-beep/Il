@@ -21,8 +21,8 @@ RAIZ="$(cd "$(dirname "$0")" && pwd)"
 H="${HERRAMIENTAS:-$RAIZ/.herramientas}"
 B="$RAIZ/build"
 BASE="$RAIZ/base/rama32-original.apk"
-VERSION_NOMBRE="4.0.0"
-VERSION_CODIGO="6"
+VERSION_NOMBRE="4.1.0"
+VERSION_CODIGO="7"
 SALIDA="$RAIZ/dist/RamaAI-$VERSION_NOMBRE.apk"
 PRUEBAS=1
 [ "${1:-}" = "--sin-pruebas" ] && PRUEBAS=0

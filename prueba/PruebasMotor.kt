@@ -168,6 +168,33 @@ fun main() {
     verificar("ChatML", prompt == "<|im_start|>system\nS<|im_end|>\n<|im_start|>user\nU<|im_end|>\n<|im_start|>assistant\n") { prompt }
     verificar("Sistema estable entre niveles", Identidad.sistema(Estilos.CHARLA, "x") == Identidad.sistema(Estilos.CHARLA, "x"))
 
+    // --- Precalentado: deja procesado el comienzo fijo de todos los pedidos
+    run {
+        val falso = ModeloFalso(listOf(listOf("x"), listOf("Hola", "!")))
+        val asistente = sinRama().also { it.motor = falso }
+        asistente.precalentar(Estilos.CHARLA)
+        asistente.responder("hola", listOf(Mensaje("user", "antes"), Mensaje("assistant", "sí")), null, AjustesRama(NivelPensar.BAJO, Estilos.CHARLA, false), OyenteDePrueba())
+        verificar("Precalentar: genera un solo token", falso.prompts.size == 2 && falso.maxTokens[0] == 1) { falso.maxTokens.toString() }
+        verificar("Precalentar: es el comienzo exacto del pedido real", falso.prompts[1].startsWith(falso.prompts[0]) && falso.prompts[0].endsWith("<|im_end|>\n")) {
+            falso.prompts[0].takeLast(60)
+        }
+        val sinModelo = sinRama()
+        sinModelo.precalentar(Estilos.CHARLA)
+        verificar("Precalentar sin modelo no falla", true)
+    }
+
+    // --- Un dato exacto (una cuenta) se responde sin pasar por el modelo
+    run {
+        val falso = ModeloFalso(listOf(listOf("no", "debería")))
+        val asistente = sinRama().also { it.motor = falso }
+        val r = asistente.responder("¿Cuánto es 12 * 7?", emptyList(), null, AjustesRama(NivelPensar.BAJO, Estilos.CHARLA, false), OyenteDePrueba())
+        verificar("Directo: no llama al modelo", falso.prompts.isEmpty() && r.texto.contains("84")) { "prompts=${falso.prompts.size} texto=${r.texto}" }
+        val falso2 = ModeloFalso(listOf(List(10) { "pienso " }, listOf("Son ", "84.")))
+        val asistente2 = sinRama().also { it.motor = falso2 }
+        asistente2.responder("¿Cuánto es 12 * 7?", emptyList(), null, AjustesRama(NivelPensar.ALTO, Estilos.CHARLA, false), OyenteDePrueba())
+        verificar("Directo: en Alto sí razona con el modelo", falso2.prompts.isNotEmpty() && falso2.prompts[0].contains("84")) { "prompts=${falso2.prompts.size}" }
+    }
+
     // --- Niveles de pensamiento con un modelo simulado
     run {
         val falso = ModeloFalso(listOf(List(400) { "pienso " }, listOf("La ", "respuesta ", "final.")))

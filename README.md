@@ -1,22 +1,48 @@
-# Rama AI 4.0
+# Rama AI 4.1
 
 IA de código abierto que corre entera en el teléfono (Android 8+, arm64): piensa
 adentro del dispositivo, busca en la web cuando hace falta y te deja elegir cuánto
 razona antes de contestar.
 
-**APK listo para instalar:** [`dist/RamaAI-4.0.0.apk`](dist/RamaAI-4.0.0.apk)
+**APK listo para instalar:** [`dist/RamaAI-4.1.0.apk`](dist/RamaAI-4.1.0.apk)
 
 ![Capturas](docs/capturas.png)
 
-## Novedades respecto de la 3.2
+## Novedades de la 4.1
 
-| | 3.2 | 4.0 |
+- **Interfaz sobria**: fondo grafito, superficies neutras y un solo color de acento
+  (azul) para lo que se puede tocar; sin degradés. Los colores de estado (verde,
+  ámbar, rojo) quedan apagados y sólo informan.
+- **Tipografía Inter** (OFL), pensada para pantallas, en cuatro pesos.
+- **Responde en segundo plano**: al enviar, un servicio en primer plano mantiene
+  viva la app (y la CPU despierta con la pantalla apagada) hasta que termina. La
+  notificación muestra en qué anda («Buscando en la web», «Escribiendo…») y tiene un
+  botón **Detener**; si no estabas en la app, avisa «Rama respondió» con el comienzo
+  de la respuesta. Android 13+ pide permiso de notificaciones la primera vez (sin
+  permiso sigue respondiendo igual, sólo que sin aviso).
+- **Más rápida**:
+  - *Precalentado*: apenas carga el modelo (o cambiás de estilo) procesa las
+    instrucciones fijas de Rama con el teléfono ocioso; la primera respuesta
+    arranca sin esa espera porque el motor reutiliza ese comienzo.
+  - *Búsqueda en paralelo*: dólar, clima, noticias, Wikipedia y los cuatro buscadores
+    salen a la vez y gana el primero que trae resultados (antes iban uno detrás de otro).
+  - *Respuesta directa*: en Bajo y Normal, un dato exacto (por ejemplo, una cuenta)
+    se responde al instante sin pasar por el modelo.
+  - Bajo es el nivel predeterminado y los presupuestos de razonamiento son más cortos
+    (Normal 256, Alto 768, Max 2048 tokens).
+- **Ícono nuevo**: la misma rama blanca sobre grafito, con el destello en azul.
+
+![Ícono](docs/icono.png)
+
+## Novedades de la 4.0 respecto de la 3.2
+
+| | 3.2 | 4.0 / 4.1 |
 |---|---|---|
 | Modelos | 13 de terceros (Qwen, Gemma, Llama, Phi) | **Uno solo: Rama**, en tres tamaños |
 | Pensamiento | encendido/apagado (sólo mostrar pasos) | **Bajo · Normal · Alto · Max**, con presupuesto real de razonamiento |
 | Búsqueda web | DuckDuckGo (sólo resúmenes) | DuckDuckGo → Bing → Mojeek, Wikipedia, Google Noticias, dólar (DolarApi), clima (Open‑Meteo) y **lectura de las páginas** |
-| Interfaz | oscura, verde, Roboto | **colorida** (degradés violeta‑fucsia‑naranja, aurora de fondo), tipografía **Nunito** |
-| Ícono | rama verde sobre negro | rama con hojas y destello de IA sobre degradé (adaptativo + monocromo) |
+| Interfaz | oscura, verde, Roboto | grafito sobrio con acento azul, tipografía **Inter** |
+| Ícono | rama verde sobre negro | rama con hojas y destello de IA sobre grafito (adaptativo + monocromo) |
 
 ### El modelo Rama
 
@@ -71,20 +97,20 @@ el control del razonamiento. Si le preguntás en qué se basa, lo dice.
 
 | Nivel | Razonamiento | Búsqueda web |
 |---|---|---|
-| ⚡ Bajo | ninguno: responde al toque | 4 resultados |
-| ✦ Normal | hasta 400 tokens | 5 resultados + 1 página leída |
-| 💡 Alto | hasta 1 200 tokens | 6 resultados + 2 páginas + Wikipedia |
-| 🔥 Max | hasta 4 096 tokens (lo que entre en memoria) y verifica sus datos | 8 resultados + 3 páginas + Wikipedia |
+| ⚡ Bajo (predeterminado) | ninguno: responde al toque | 4 resultados |
+| ✦ Normal | hasta 256 tokens | 5 resultados |
+| 💡 Alto | hasta 768 tokens | 6 resultados + 1 página leída + Wikipedia |
+| 🔥 Max | hasta 2 048 tokens y revisa su propia respuesta | 8 resultados + 2 páginas + Wikipedia |
 
 Si el modelo agota el presupuesto, la app cierra el bloque `<think>` y le pide la
 respuesta; el motor reutiliza lo ya procesado, así que el corte no cuesta tiempo extra.
-El razonamiento se ve en vivo en una tarjeta del color del nivel.
+El razonamiento se ve en vivo en una tarjeta plegable.
 
 ## Instalar
 
 1. **Desinstalá la 3.2** (el APK está firmado con otra clave y Android no deja
    actualizar encima). Los chats y modelos viejos se borran con ella.
-2. Instalá `dist/RamaAI-4.0.0.apk`.
+2. Instalá `dist/RamaAI-4.1.0.apk` (desde la 4.0 se actualiza encima, sin perder chats ni modelos).
 3. Tocá **Modelo** y bajá la edición recomendada (la descarga sigue en segundo plano).
 
 ## Compilar
@@ -106,12 +132,12 @@ compila `app/src` a un dex nuevo, reemplaza recursos, assets y manifiesto, y fir
 ```
 app/src/ar/rama/ai/          interfaz: MainActivity, pantallas, tema, íconos, Markdown
 app/src/ar/rama/ai/motor/    Asistente, MotorRama, Catalogo, NivelPensar, Buscador…
-app/res, app/assets          ícono adaptativo, tema, Nunito, base de conocimiento
-prueba/PruebasMotor.kt       81 pruebas del motor (JVM, con un modelo simulado)
-prueba/robolectric/          prueba de la interfaz sobre el APK compilado
+app/res, app/assets          ícono adaptativo, tema, Inter, base de conocimiento
+prueba/PruebasMotor.kt       86 pruebas del motor (JVM, con un modelo simulado)
+prueba/robolectric/          4 pruebas de la interfaz sobre el APK compilado (incluida la de segundo plano)
 ```
 
 ## Créditos
 
 Pesos del modelo: Qwen3 (Alibaba, Apache 2.0) · Motor: llama.cpp (MIT) ·
-Tipografía: Nunito (SIL OFL, incluida en `app/assets/fuentes/OFL.txt`).
+Tipografía: Inter (SIL OFL, incluida en `app/assets/fuentes/OFL.txt`).

@@ -49,8 +49,8 @@ object Markdown {
                 salida.append(codigo)
                 val hasta = salida.length
                 salida.setSpan(SpanFuente(Typeface.MONOSPACE), desde, hasta, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                salida.setSpan(ForegroundColorSpan(Colores.CIAN), desde, hasta, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                salida.setSpan(BackgroundColorSpan(Colores.alfa(Colores.CIAN, 0.08f)), desde, hasta, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                salida.setSpan(ForegroundColorSpan(Colores.TEXTO), desde, hasta, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                salida.setSpan(BackgroundColorSpan(Colores.SUPERFICIE_ALTA), desde, hasta, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 salida.setSpan(RelativeSizeSpan(0.9f), desde, hasta, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 if (i < partes.size - 1) salida.append('\n')
             } else {
@@ -88,19 +88,19 @@ object Markdown {
             if (desde >= hasta || hasta > salida.length) continue
             when (marca.enfasis) {
                 Enfasis.NEGRITA -> {
-                    salida.setSpan(SpanFuente(Fuentes.de(Peso.EXTRA)), desde, hasta, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    salida.setSpan(SpanFuente(Fuentes.de(Peso.NEGRITA)), desde, hasta, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                     salida.setSpan(ForegroundColorSpan(Colores.TEXTO), desde, hasta, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 }
                 Enfasis.CURSIVA -> salida.setSpan(StyleSpan(Typeface.ITALIC), desde, hasta, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 Enfasis.CODIGO -> {
                     salida.setSpan(SpanFuente(Typeface.MONOSPACE), desde, hasta, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    salida.setSpan(ForegroundColorSpan(Colores.CIAN), desde, hasta, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    salida.setSpan(BackgroundColorSpan(Colores.alfa(Colores.CIAN, 0.10f)), desde, hasta, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    salida.setSpan(ForegroundColorSpan(Colores.TEXTO), desde, hasta, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    salida.setSpan(BackgroundColorSpan(Colores.SUPERFICIE_ALTA), desde, hasta, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                     salida.setSpan(RelativeSizeSpan(0.92f), desde, hasta, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 }
                 Enfasis.TITULO -> {
-                    salida.setSpan(SpanFuente(Fuentes.de(Peso.EXTRA)), desde, hasta, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    salida.setSpan(ForegroundColorSpan(Colores.LILA), desde, hasta, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    salida.setSpan(SpanFuente(Fuentes.de(Peso.NEGRITA)), desde, hasta, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    salida.setSpan(ForegroundColorSpan(Colores.TEXTO), desde, hasta, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                     salida.setSpan(RelativeSizeSpan(1.12f), desde, hasta, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 }
                 else -> {}
@@ -114,19 +114,19 @@ object Markdown {
             val fuente = fuentes.getOrNull(indice) ?: continue
             val desde = m.range.first
             val hasta = m.range.last + 1
-            texto.setSpan(SpanFuente(Fuentes.de(Peso.EXTRA)), desde, hasta, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            texto.setSpan(SpanFuente(Fuentes.de(Peso.NEGRITA)), desde, hasta, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             texto.setSpan(RelativeSizeSpan(0.85f), desde, hasta, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            texto.setSpan(BackgroundColorSpan(Colores.alfa(Colores.CELESTE, 0.16f)), desde, hasta, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            texto.setSpan(BackgroundColorSpan(Colores.alfa(Colores.ACENTO, 0.16f)), desde, hasta, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             if (alAbrir != null) {
                 texto.setSpan(object : ClickableSpan() {
                     override fun onClick(vista: View) = alAbrir(fuente.url)
                     override fun updateDrawState(pintura: TextPaint) {
-                        pintura.color = Colores.CELESTE
+                        pintura.color = Colores.ACENTO_CLARO
                         pintura.isUnderlineText = false
                     }
                 }, desde, hasta, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             } else {
-                texto.setSpan(ForegroundColorSpan(Colores.CELESTE), desde, hasta, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                texto.setSpan(ForegroundColorSpan(Colores.ACENTO_CLARO), desde, hasta, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
         }
     }
